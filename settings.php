@@ -31,12 +31,15 @@ if ($hassiteconfig) {
     $settings = new admin_settingpage('local_stackforge', get_string('pluginname', 'local_stackforge'));
     $ADMIN->add('localplugins', $settings);
 
+    // PARAM_RAW_TRIMMED (not PARAM_URL): the endpoint may legitimately be an internal host such as
+    // http://generate:8092, which PARAM_URL would strip. The URL is validated where it is used
+    // (generator::base_url(): http/https scheme, host required, no embedded credentials).
     $settings->add(new admin_setting_configtext(
         'local_stackforge/serviceurl',
         get_string('serviceurl', 'local_stackforge'),
         get_string('serviceurl_desc', 'local_stackforge'),
         '',
-        PARAM_URL
+        PARAM_RAW_TRIMMED
     ));
 
     $settings->add(new admin_setting_configpasswordunmask(
