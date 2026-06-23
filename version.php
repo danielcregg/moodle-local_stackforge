@@ -6,7 +6,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_stackforge';
-$plugin->version   = 2026062301;
+$plugin->version   = 2026062302;   // + build RL-sequenced quiz
 $plugin->requires  = 2024042200;   // Moodle 4.4+
 $plugin->maturity  = MATURITY_ALPHA;
 $plugin->release   = '0.1.0';

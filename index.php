@@ -39,28 +39,43 @@ $categories = $DB->get_records('question_categories', ['contextid' => $context->
 
 $result = null;
 if (data_submitted() && confirm_sesskey()) {
-    $type       = required_param('qtype', PARAM_ALPHAEXT);
-    $difficulty = optional_param('difficulty', 'easy', PARAM_ALPHA);
-    $count      = min(10, max(1, optional_param('count', 1, PARAM_INT)));
     $categoryid = required_param('category', PARAM_INT);
-
-    if (!isset($types[$type]) || !isset($categories[$categoryid])) {
+    if (!isset($categories[$categoryid])) {
         throw new moodle_exception('invalidparameter', 'error');
     }
     $category = $DB->get_record('question_categories', ['id' => $categoryid], '*', MUST_EXIST);
 
-    try {
-        $questions = \local_stackforge\generator::generate($type, $difficulty, $count);
-        $made = 0;
-        foreach ($questions as $q) {
-            if (!empty($q['xml'])
-                    && \local_stackforge\generator::import_one($q['xml'], $category, $context, $course)) {
-                $made++;
-            }
+    if (optional_param('buildquiz', 0, PARAM_INT)) {
+        // Build a quiz whose questions follow the RL policy's curriculum (easy -> hard).
+        $seqcount = min(16, max(2, optional_param('seqcount', 10, PARAM_INT)));
+        try {
+            $steps = \local_stackforge\generator::sequence($seqcount);
+            $built = \local_stackforge\generator::build_rl_set($course, $context, $category, $steps,
+                'RL Adaptive Quiz (' . userdate(time(), '%d %b %H:%M') . ')');
+            $result = ['build' => $built];
+        } catch (moodle_exception $e) {
+            $result = ['error' => $e->getMessage()];
         }
-        $result = ['n' => $made];
-    } catch (moodle_exception $e) {
-        $result = ['error' => $e->getMessage()];
+    } else {
+        $type       = required_param('qtype', PARAM_ALPHAEXT);
+        $difficulty = optional_param('difficulty', 'easy', PARAM_ALPHA);
+        $count      = min(10, max(1, optional_param('count', 1, PARAM_INT)));
+        if (!isset($types[$type])) {
+            throw new moodle_exception('invalidparameter', 'error');
+        }
+        try {
+            $questions = \local_stackforge\generator::generate($type, $difficulty, $count);
+            $made = 0;
+            foreach ($questions as $q) {
+                if (!empty($q['xml'])
+                        && \local_stackforge\generator::import_one($q['xml'], $category, $context, $course)) {
+                    $made++;
+                }
+            }
+            $result = ['n' => $made];
+        } catch (moodle_exception $e) {
+            $result = ['error' => $e->getMessage()];
+        }
     }
 }
 
@@ -75,7 +90,24 @@ if (!get_config('local_stackforge', 'serviceurl')) {
 if ($result !== null) {
     if (isset($result['error'])) {
         echo $OUTPUT->notification(get_string('servicefail', 'local_stackforge', $result['error']), 'error');
-    } else if ($result['n'] > 0) {
+    } else if (isset($result['build'])) {
+        $b = $result['build'];
+        if ($b['made'] > 0) {
+            echo $OUTPUT->notification(get_string('builtset', 'local_stackforge', $b['made']), 'success');
+            if (!empty($b['cmid'])) {
+                echo html_writer::tag('p', html_writer::link(
+                    new moodle_url('/mod/quiz/view.php', ['id' => $b['cmid']]),
+                    get_string('openquiz', 'local_stackforge'), ['class' => 'btn btn-primary']));
+            } else {
+                echo $OUTPUT->notification(get_string('quiznotbuilt', 'local_stackforge'), 'warning');
+                echo html_writer::tag('p', html_writer::link(
+                    new moodle_url('/question/edit.php', ['courseid' => $courseid]),
+                    get_string('backtobank', 'local_stackforge')));
+            }
+        } else {
+            echo $OUTPUT->notification(get_string('nonemade', 'local_stackforge', ''), 'warning');
+        }
+    } else if (($result['n'] ?? 0) > 0) {
         echo $OUTPUT->notification(get_string('imported', 'local_stackforge', $result['n']), 'success');
         echo html_writer::tag('p', html_writer::link(
             new moodle_url('/question/edit.php', ['courseid' => $courseid]),
@@ -117,6 +149,18 @@ echo html_writer::end_div();
 
 echo html_writer::tag('button', get_string('generatebtn', 'local_stackforge'),
     ['type' => 'submit', 'class' => 'btn btn-primary', 'style' => 'margin-top:.6rem']);
+
+// --- Build a full RL-sequenced quiz (questions follow the policy's easy->hard curriculum) ---
+echo html_writer::tag('hr', '', ['style' => 'margin:1.4rem 0']);
+echo html_writer::tag('h4', get_string('buildquizheading', 'local_stackforge'));
+echo html_writer::tag('p', get_string('buildquizintro', 'local_stackforge'));
+echo html_writer::start_div('form-group');
+echo html_writer::tag('label', get_string('seqcount', 'local_stackforge'), ['for' => 'seqcount']);
+echo html_writer::select(array_combine(range(4, 16), range(4, 16)), 'seqcount', 10, false, ['id' => 'seqcount']);
+echo html_writer::end_div();
+echo html_writer::tag('button', get_string('buildquizbtn', 'local_stackforge'),
+    ['type' => 'submit', 'name' => 'buildquiz', 'value' => '1', 'class' => 'btn btn-secondary', 'style' => 'margin-top:.4rem']);
+
 echo html_writer::end_tag('form');
 
 echo $OUTPUT->footer();

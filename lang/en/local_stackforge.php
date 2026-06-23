@@ -36,5 +36,14 @@ $string['servicefail'] = 'The generation service returned an error: {$a}';
 $string['importfail'] = 'A generated question could not be imported into the question bank.';
 $string['backtobank'] = 'Open the question bank';
 
+// Build RL-sequenced quiz.
+$string['buildquizheading'] = 'Or build a full RL-sequenced quiz';
+$string['buildquizintro'] = 'Generate a quiz whose questions follow the Phase 3 RL teaching policy\'s discovered easy → hard curriculum (the questions are added to the category selected above).';
+$string['seqcount'] = 'Number of questions';
+$string['buildquizbtn'] = 'Build RL-sequenced quiz';
+$string['builtset'] = 'Generated {$a} questions in the RL policy\'s curriculum order.';
+$string['openquiz'] = 'Open the new RL Adaptive Quiz';
+$string['quiznotbuilt'] = 'The questions were added to the question bank, but the quiz could not be auto-created on this Moodle. Build a quiz from the category manually.';
+
 // Privacy.
 $string['privacy:metadata'] = 'The STACK Forge plugin does not store any personal data. It sends only the chosen question type and difficulty to the generation service to draft questions; no information about users is transmitted.';
