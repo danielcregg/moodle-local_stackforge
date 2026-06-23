@@ -30,7 +30,6 @@ namespace local_stackforge\privacy;
  * @covers \local_stackforge\privacy\provider
  */
 final class provider_test extends \advanced_testcase {
-
     /**
      * The null provider returns a reason string that resolves to a language string.
      *

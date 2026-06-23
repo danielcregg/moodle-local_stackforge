@@ -30,7 +30,6 @@ namespace local_stackforge;
  * @covers \local_stackforge\generator
  */
 final class generator_test extends \advanced_testcase {
-
     /**
      * An empty service URL is reported as not configured, before any network call.
      *
