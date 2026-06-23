@@ -188,8 +188,8 @@ class generator {
             $d = get_config('quiz');
             // The course top grade category (depth 1) is fetched directly to avoid needing the
             // grade_category class to be autoloaded.
-            $gradecatid = (int) ($DB->get_field('grade_categories', 'id',
-                ['courseid' => $course->id, 'depth' => 1], IGNORE_MULTIPLE) ?: 0);
+            $gradecat = $DB->get_field('grade_categories', 'id', ['courseid' => $course->id, 'depth' => 1], IGNORE_MULTIPLE);
+            $gradecatid = (int) ($gradecat ?: 0);
 
             $mi = new \stdClass();
             $mi->modulename = 'quiz';
