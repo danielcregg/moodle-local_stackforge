@@ -1,6 +1,28 @@
 <?php
-// Course page: choose a STACK question type/difficulty/count + a target category, then generate
-// AI-drafted, oracle-validated STACK questions straight into the course question bank.
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * Course page: pick a STACK question type/difficulty/count and a target category, then generate
+ * AI-drafted, oracle-validated STACK questions straight into the course question bank.
+ *
+ * @package    local_stackforge
+ * @copyright  2026 Daniel Cregg
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
 require(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/questionlib.php');
 
@@ -16,17 +38,21 @@ $PAGE->set_pagelayout('incourse');
 $PAGE->set_title(get_string('generate', 'local_stackforge'));
 $PAGE->set_heading($course->fullname);
 
-// The eight STACK question types the forge can author (value => human label).
+// The eight STACK question types the forge can author (type code => lang string id for the label).
 $types = [
-    'differentiate'         => 'Differentiate',
-    'integrate'             => 'Find an antiderivative',
-    'expand'                => 'Expand',
-    'factor'                => 'Factorise',
-    'simplify_lowest_terms' => 'Simplify to lowest terms',
-    'solve_linear'          => 'Solve a linear equation',
-    'solve_quadratic'       => 'Solve a quadratic',
-    'numerical'             => 'Evaluate to a decimal',
+    'differentiate'         => 'type_differentiate',
+    'integrate'             => 'type_integrate',
+    'expand'                => 'type_expand',
+    'factor'                => 'type_factor',
+    'simplify_lowest_terms' => 'type_simplify',
+    'solve_linear'          => 'type_solvelinear',
+    'solve_quadratic'       => 'type_solvequadratic',
+    'numerical'             => 'type_numerical',
 ];
+$typemenu = [];
+foreach ($types as $code => $stringid) {
+    $typemenu[$code] = get_string($stringid, 'local_stackforge');
+}
 $difficulties = [
     'easy'   => get_string('easy', 'local_stackforge'),
     'medium' => get_string('medium', 'local_stackforge'),
@@ -46,17 +72,23 @@ if (data_submitted() && confirm_sesskey()) {
     $category = $DB->get_record('question_categories', ['id' => $categoryid], '*', MUST_EXIST);
 
     if (optional_param('buildquiz', 0, PARAM_INT)) {
+        // Building a quiz creates a course activity and adds questions: require the core
+        // capabilities for both, in addition to this plugin's own generate capability.
+        require_capability('moodle/question:add', $context);
+        require_capability('moodle/course:manageactivities', $context);
         // Build a quiz whose questions follow the RL policy's curriculum (easy -> hard).
         $seqcount = min(16, max(2, optional_param('seqcount', 10, PARAM_INT)));
         try {
             $steps = \local_stackforge\generator::sequence($seqcount);
             $built = \local_stackforge\generator::build_rl_set($course, $context, $category, $steps,
-                'RL Adaptive Quiz (' . userdate(time(), '%d %b %H:%M') . ')');
+                get_string('quizname', 'local_stackforge', userdate(time(), '%d %b %H:%M')));
             $result = ['build' => $built];
         } catch (moodle_exception $e) {
             $result = ['error' => $e->getMessage()];
         }
     } else {
+        // Adding generated questions to the bank requires the core question:add capability.
+        require_capability('moodle/question:add', $context);
         $type       = required_param('qtype', PARAM_ALPHAEXT);
         $difficulty = optional_param('difficulty', 'easy', PARAM_ALPHA);
         $count      = min(10, max(1, optional_param('count', 1, PARAM_INT)));
@@ -67,9 +99,8 @@ if (data_submitted() && confirm_sesskey()) {
             $questions = \local_stackforge\generator::generate($type, $difficulty, $count);
             $made = 0;
             foreach ($questions as $q) {
-                if (!empty($q['xml'])
-                        && \local_stackforge\generator::import_one($q['xml'], $category, $context, $course)) {
-                    $made++;
+                if (!empty($q['xml'])) {
+                    $made += count(\local_stackforge\generator::import_one($q['xml'], $category, $context, $course));
                 }
             }
             $result = ['n' => $made];
@@ -129,7 +160,7 @@ echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', '
 
 echo html_writer::start_div('form-group');
 echo html_writer::tag('label', get_string('qtype', 'local_stackforge'), ['for' => 'qtype']);
-echo html_writer::select($types, 'qtype', 'differentiate', false, ['id' => 'qtype']);
+echo html_writer::select($typemenu, 'qtype', 'differentiate', false, ['id' => 'qtype']);
 echo html_writer::end_div();
 
 echo html_writer::start_div('form-group');
@@ -148,10 +179,10 @@ echo html_writer::select($catoptions, 'category', array_key_first($catoptions), 
 echo html_writer::end_div();
 
 echo html_writer::tag('button', get_string('generatebtn', 'local_stackforge'),
-    ['type' => 'submit', 'class' => 'btn btn-primary', 'style' => 'margin-top:.6rem']);
+    ['type' => 'submit', 'class' => 'btn btn-primary local-stackforge-gen']);
 
 // --- Build a full RL-sequenced quiz (questions follow the policy's easy->hard curriculum) ---
-echo html_writer::tag('hr', '', ['style' => 'margin:1.4rem 0']);
+echo html_writer::empty_tag('hr', ['class' => 'local-stackforge-sep']);
 echo html_writer::tag('h4', get_string('buildquizheading', 'local_stackforge'));
 echo html_writer::tag('p', get_string('buildquizintro', 'local_stackforge'));
 echo html_writer::start_div('form-group');
@@ -159,7 +190,7 @@ echo html_writer::tag('label', get_string('seqcount', 'local_stackforge'), ['for
 echo html_writer::select(array_combine(range(4, 16), range(4, 16)), 'seqcount', 10, false, ['id' => 'seqcount']);
 echo html_writer::end_div();
 echo html_writer::tag('button', get_string('buildquizbtn', 'local_stackforge'),
-    ['type' => 'submit', 'name' => 'buildquiz', 'value' => '1', 'class' => 'btn btn-secondary', 'style' => 'margin-top:.4rem']);
+    ['type' => 'submit', 'name' => 'buildquiz', 'value' => '1', 'class' => 'btn btn-secondary local-stackforge-build']);
 
 echo html_writer::end_tag('form');
 

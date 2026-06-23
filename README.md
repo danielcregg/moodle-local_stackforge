@@ -1,59 +1,90 @@
-# local_stackforge — AI STACK-question generator, inside Moodle
+# STACK Forge — AI question generator (local_stackforge)
 
-A thin Moodle plugin that brings the forge's question authoring **into Moodle**: from a course,
-a teacher picks a STACK question type + difficulty + count, clicks a button, and gets
-**AI-drafted, oracle-validated** STACK questions added straight to the course **question bank** —
-ready to drop into a quiz.
+[![Moodle Plugin CI](https://github.com/danielcregg/moodle-local_stackforge/actions/workflows/moodle-ci.yml/badge.svg)](https://github.com/danielcregg/moodle-local_stackforge/actions/workflows/moodle-ci.yml)
+![Moodle 4.5](https://img.shields.io/badge/Moodle-4.5%20LTS-orange)
+![License GPL v3](https://img.shields.io/badge/license-GPLv3-blue)
 
-It keeps the project's decoupling principle: the plugin is thin and stateless; the intelligence
-(AI drafting) and the oracle (Maxima/STACK validation) live in the **external generation service**
-the plugin calls. Same pattern as `local_aitutor` (hints) — Moodle is never forked.
+A Moodle **local plugin** that brings AI question authoring *into* Moodle. From a course, a teacher
+picks a STACK question type, difficulty and count, clicks a button, and gets **AI-drafted,
+oracle-validated** [STACK](https://stack-assessment.org/) questions added straight to the course
+**question bank** — ready to drop into a quiz. It can also build a whole **adaptive quiz** whose
+questions follow a reinforcement-learning teaching policy's easy → hard curriculum.
+
+The plugin is deliberately **thin and stateless**. The intelligence (AI drafting) and the oracle
+(Maxima/STACK validation that *proves* each question is gradable across random variants) live in an
+**external generation service** that the plugin calls over HTTP. Moodle is never forked.
 
 ```mermaid
 flowchart LR
-    T["Teacher in a course"] -->|"type, difficulty, count"| P["local_stackforge (this plugin)"]
+    T["Teacher in a course"] -->|"type, difficulty, count"| P["local_stackforge"]
     P -->|"POST /generate (bearer token)"| G["generation service"]
-    G -->|"draft expression"| AI["ai-proxy → Bedrock"]
+    G -->|"draft expression"| AI["AI provider"]
     G -->|"validate across seeds"| S["STACK API → Maxima"]
     G -->|"validated Moodle XML"| P
     P -->|"qformat_xml import"| QB[("Course question bank")]
 ```
 
-## What it does
-- Adds a **"Generate STACK questions"** link to a course (for editing teachers / managers).
-- Calls the **`/generate`** endpoint (the `generate` service behind Caddy, bearer-token gated) for
-  N validated questions of the chosen type/difficulty.
-- Imports each returned `<question type="stack">` XML into a chosen question category using
-  Moodle's standard XML import — so they behave exactly like manually-authored STACK questions.
-
 ## Requirements
-- Moodle 4.4+ with the **STACK question type** (`qtype_stack`) installed (this only emits STACK XML).
-- The stack-question-forge backend with the **generation service** deployed (see
-  `infra/docker-compose.yml` → the `generate` service + the `/generate` Caddy route).
+
+- **Moodle 4.5 LTS** or later (developed and tested on 4.5; `$plugin->supported = [405, 405]`).
+- The **STACK question type** (`qtype_stack`) installed — this plugin only emits/imports STACK XML
+  and declares `qtype_stack` as a dependency.
+- A reachable **generation service** that exposes `POST /generate` (and `POST /sequence` for the
+  RL-sequenced quiz). A reference implementation and its `docker compose` stack are provided in the
+  parent project, [stack-question-forge](https://github.com/danielcregg/stack-question-forge)
+  (`infra/`). You host this yourself; the plugin ships with **no default endpoint**.
 
 ## Install
+
+### From the Moodle Plugins directory (recommended once published)
+Site administration → Plugins → Install plugins → search for *STACK Forge*.
+
+### Manually
+Copy this directory to `<moodleroot>/local/stackforge` (the folder **must** be named `stackforge`),
+then visit *Site administration → Notifications* to run the upgrade, or:
+
 ```bash
-# copy this folder to <moodle>/local/stackforge, then run the upgrade
-docker cp local_stackforge moodle-moodle-1:/var/www/html/local/stackforge
-docker exec -u www-data moodle-moodle-1 php /var/www/html/admin/cli/upgrade.php --non-interactive
+php admin/cli/upgrade.php --non-interactive
 ```
-Then set the service URL + token in **Site administration → Plugins → Local plugins → STACK Forge**:
-- **Generation service URL** — the same API base your STACK questions validate against
-  (e.g. the Cloudflare tunnel, or `https://api.stackquestionforge.tech` once live).
-- **API token** — `FORGE_API_SECRET` (the bearer token; stored server-side, never sent to the browser).
+
+## Configure
+
+*Site administration → Plugins → Local plugins → STACK Forge*:
+
+| Setting | Description |
+|---|---|
+| **Generation service URL** | Base URL of your generation service (e.g. `https://forge.example.edu`). Empty by default — the plugin is inert until this is set. |
+| **API token** | Bearer token for the service (`FORGE_API_SECRET`). Stored server-side, never sent to the browser. Leave blank if your endpoint needs none. |
+
+> **Internal endpoints:** the URL is admin-only and is validated (http/https, host required, no
+> embedded credentials). Because deployments often run the service on an internal host (e.g.
+> `http://generate:8092`), the plugin uses Moodle's `ignoresecurity` curl option **for this one
+> admin-configured call**, with redirects disabled and protocols pinned. It is never user-influenced.
 
 ## Use
-In a course → **Generate STACK questions** → pick type/difficulty/how-many + a category → generate.
-The questions are validated on the live STACK engine *before* they're added, so they're gradable
-across random variants by construction.
 
-## Status
-Code complete; **pending a live install/test on the Moodle 4.5 demo** (the Moodle question-import
-API has version-specific edges worth verifying on the target instance before relying on it).
-The generation service it calls is **deployed and verified**.
+In a course → **Generate STACK questions** → choose type / difficulty / how many + a target
+category → **Generate**. Questions are validated on the live STACK engine *before* they are added,
+so they are gradable across random variants by construction. Or use **Build RL-sequenced quiz** to
+generate a curriculum-ordered set and create an adaptive quiz in one click.
 
-## Roadmap (the end goal: everything inside Moodle)
-- This plugin = authoring inside Moodle. ✅ (code)
-- `local_aitutor` = live AI hints inside quizzes. ✅ (deployed)
-- Next: wire the **RL policy** (`phase3/policy_service`) into `local_aitutor` so the next question
-  is chosen by the learned teaching policy — completing the author → tutor → teach loop in Moodle.
+Requires the `local/stackforge:generate` capability (granted to editing teachers and managers by
+default); adding questions and building a quiz also require the core `moodle/question:add` and
+`moodle/course:manageactivities` capabilities.
+
+## Privacy
+
+This plugin stores **no personal data** (it implements the Moodle Privacy API null provider). It
+sends only the chosen question type and difficulty to the generation service. See `classes/privacy/`.
+
+## For reviewers
+
+The plugin needs a backend to do anything. To exercise it end to end, stand up the reference
+generation service from [stack-question-forge](https://github.com/danielcregg/stack-question-forge)
+(`infra/docker-compose.yml` → the `generate` service behind a bearer-gated reverse proxy), then set
+the URL + token above. Without a backend the UI loads and reports "not configured", which is the
+intended inert state.
+
+## License
+
+[GNU GPL v3 or later](LICENSE) — the same license as Moodle.
