@@ -80,8 +80,13 @@ if (data_submitted() && confirm_sesskey()) {
         $seqcount = min(16, max(2, optional_param('seqcount', 10, PARAM_INT)));
         try {
             $steps = \local_stackforge\generator::sequence($seqcount);
-            $built = \local_stackforge\generator::build_rl_set($course, $context, $category, $steps,
-                get_string('quizname', 'local_stackforge', userdate(time(), '%d %b %H:%M')));
+            $built = \local_stackforge\generator::build_rl_set(
+                $course,
+                $context,
+                $category,
+                $steps,
+                get_string('quizname', 'local_stackforge', userdate(time(), '%d %b %H:%M'))
+            );
             $result = ['build' => $built];
         } catch (moodle_exception $e) {
             $result = ['error' => $e->getMessage()];
@@ -126,29 +131,36 @@ if ($result !== null) {
         if ($b['made'] > 0) {
             echo $OUTPUT->notification(get_string('builtset', 'local_stackforge', $b['made']), 'success');
             if (!empty($b['cmid'])) {
-                echo html_writer::tag('p', html_writer::link(
+                $link = html_writer::link(
                     new moodle_url('/mod/quiz/view.php', ['id' => $b['cmid']]),
-                    get_string('openquiz', 'local_stackforge'), ['class' => 'btn btn-primary']));
+                    get_string('openquiz', 'local_stackforge'),
+                    ['class' => 'btn btn-primary']
+                );
+                echo html_writer::tag('p', $link);
             } else {
                 echo $OUTPUT->notification(get_string('quiznotbuilt', 'local_stackforge'), 'warning');
-                echo html_writer::tag('p', html_writer::link(
+                $link = html_writer::link(
                     new moodle_url('/question/edit.php', ['courseid' => $courseid]),
-                    get_string('backtobank', 'local_stackforge')));
+                    get_string('backtobank', 'local_stackforge')
+                );
+                echo html_writer::tag('p', $link);
             }
         } else {
             echo $OUTPUT->notification(get_string('nonemade', 'local_stackforge', ''), 'warning');
         }
     } else if (($result['n'] ?? 0) > 0) {
         echo $OUTPUT->notification(get_string('imported', 'local_stackforge', $result['n']), 'success');
-        echo html_writer::tag('p', html_writer::link(
+        $link = html_writer::link(
             new moodle_url('/question/edit.php', ['courseid' => $courseid]),
-            get_string('backtobank', 'local_stackforge')));
+            get_string('backtobank', 'local_stackforge')
+        );
+        echo html_writer::tag('p', $link);
     } else {
         echo $OUTPUT->notification(get_string('nonemade', 'local_stackforge', ''), 'warning');
     }
 }
 
-// --- the form (plain HTML; minimal + robust) ---
+// The form (plain HTML, minimal and robust).
 $catoptions = [];
 foreach ($categories as $cat) {
     $catoptions[$cat->id] = format_string($cat->name);
@@ -178,10 +190,13 @@ echo html_writer::tag('label', get_string('category', 'local_stackforge'), ['for
 echo html_writer::select($catoptions, 'category', array_key_first($catoptions), false, ['id' => 'category']);
 echo html_writer::end_div();
 
-echo html_writer::tag('button', get_string('generatebtn', 'local_stackforge'),
-    ['type' => 'submit', 'class' => 'btn btn-primary local-stackforge-gen']);
+echo html_writer::tag(
+    'button',
+    get_string('generatebtn', 'local_stackforge'),
+    ['type' => 'submit', 'class' => 'btn btn-primary local-stackforge-gen']
+);
 
-// --- Build a full RL-sequenced quiz (questions follow the policy's easy->hard curriculum) ---
+// Build a full RL-sequenced quiz (questions follow the policy easy-to-hard curriculum).
 echo html_writer::empty_tag('hr', ['class' => 'local-stackforge-sep']);
 echo html_writer::tag('h4', get_string('buildquizheading', 'local_stackforge'));
 echo html_writer::tag('p', get_string('buildquizintro', 'local_stackforge'));
@@ -189,8 +204,11 @@ echo html_writer::start_div('form-group');
 echo html_writer::tag('label', get_string('seqcount', 'local_stackforge'), ['for' => 'seqcount']);
 echo html_writer::select(array_combine(range(4, 16), range(4, 16)), 'seqcount', 10, false, ['id' => 'seqcount']);
 echo html_writer::end_div();
-echo html_writer::tag('button', get_string('buildquizbtn', 'local_stackforge'),
-    ['type' => 'submit', 'name' => 'buildquiz', 'value' => '1', 'class' => 'btn btn-secondary local-stackforge-build']);
+echo html_writer::tag(
+    'button',
+    get_string('buildquizbtn', 'local_stackforge'),
+    ['type' => 'submit', 'name' => 'buildquiz', 'value' => '1', 'class' => 'btn btn-secondary local-stackforge-build']
+);
 
 echo html_writer::end_tag('form');
 

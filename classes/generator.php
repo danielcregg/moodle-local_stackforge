@@ -24,13 +24,10 @@
 
 namespace local_stackforge;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Client for the stack-question-forge generation service plus question-bank import helpers.
  */
 class generator {
-
     /**
      * Validate and return the admin-configured generation-service base URL.
      *
@@ -47,9 +44,11 @@ class generator {
             throw new \moodle_exception('notconfigured', 'local_stackforge');
         }
         $parts = parse_url($base);
-        if ($parts === false || empty($parts['scheme']) || empty($parts['host'])
-                || !in_array(strtolower($parts['scheme']), ['http', 'https'], true)
-                || isset($parts['user']) || isset($parts['pass'])) {
+        if (
+            $parts === false || empty($parts['scheme']) || empty($parts['host'])
+            || !in_array(strtolower($parts['scheme']), ['http', 'https'], true)
+            || isset($parts['user']) || isset($parts['pass'])
+        ) {
             throw new \moodle_exception('badendpoint', 'local_stackforge');
         }
         return $base;
@@ -68,10 +67,10 @@ class generator {
         $base = self::base_url();
         $token = (string) get_config('local_stackforge', 'apitoken');
 
-        // ignoresecurity: the service URL is admin-configured and trusted, and is often an internal
-        // address (e.g. http://generate:8092) that Moodle's SSRF guard would otherwise block. It is
-        // validated in base_url() and never user-controlled. We also pin the protocols and forbid
-        // following redirects so the request cannot be bounced to an unexpected host.
+        // The ignoresecurity option is used because the service URL is admin-configured and trusted,
+        // and is often an internal address (such as a Docker service name) that Moodle's SSRF guard
+        // would otherwise block. It is validated in base_url() and is never user-controlled. We also
+        // pin the allowed protocols and forbid redirects so the request cannot be bounced elsewhere.
         $curl = new \curl(['ignoresecurity' => true]);
         $headers = ['Content-Type: application/json'];
         if ($token !== '') {
@@ -79,16 +78,16 @@ class generator {
         }
         $curl->setHeader($headers);
         $resp = $curl->post($base . $path, json_encode($payload), [
-            'CURLOPT_TIMEOUT'         => $timeout,
-            'CURLOPT_IPRESOLVE'       => CURL_IPRESOLVE_V4,    // Moodle container has no IPv6 egress.
-            'CURLOPT_FOLLOWLOCATION'  => 0,
-            'CURLOPT_PROTOCOLS'       => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            'CURLOPT_TIMEOUT' => $timeout,
+            'CURLOPT_IPRESOLVE' => CURL_IPRESOLVE_V4, // Moodle container has no IPv6 egress.
+            'CURLOPT_FOLLOWLOCATION' => 0,
+            'CURLOPT_PROTOCOLS' => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             'CURLOPT_REDIR_PROTOCOLS' => CURLPROTO_HTTP | CURLPROTO_HTTPS,
         ]);
         $code = (int) ($curl->get_info()['http_code'] ?? 0);
         if ($code !== 200) {
-            throw new \moodle_exception('servicefail', 'local_stackforge', '',
-                $code . ' ' . substr((string) $resp, 0, 200));
+            $detail = $code . ' ' . substr((string) $resp, 0, 200);
+            throw new \moodle_exception('servicefail', 'local_stackforge', '', $detail);
         }
         $data = json_decode((string) $resp, true);
         return is_array($data) ? $data : [];
@@ -100,7 +99,7 @@ class generator {
      * @param string $type The forge question type, e.g. 'differentiate'.
      * @param string $difficulty One of 'easy', 'medium', 'hard'.
      * @param int $count How many questions to request.
-     * @return array List of ['name','type','difficulty','source','xml'] (already oracle-validated).
+     * @return array List of question records (already oracle-validated).
      * @throws \moodle_exception
      */
     public static function generate(string $type, string $difficulty, int $count): array {
@@ -109,10 +108,10 @@ class generator {
     }
 
     /**
-     * Ask the generation service for the RL policy's curriculum order (skill x difficulty).
+     * Ask the generation service for the RL policy's curriculum order (skill by difficulty).
      *
      * @param int $count How many steps to request.
-     * @return array List of ['skill','difficulty'] steps in teaching order.
+     * @return array List of steps in teaching order.
      * @throws \moodle_exception
      */
     public static function sequence(int $count): array {
@@ -143,14 +142,19 @@ class generator {
      * @param \stdClass $course The course.
      * @param \context $context The course context.
      * @param \stdClass $category The target question category.
-     * @param array $steps Curriculum steps (['skill','difficulty']) from the RL policy.
+     * @param array $steps Curriculum steps from the RL policy.
      * @param string $name The quiz name.
-     * @return array ['made'=>int, 'qids'=>int[], 'cmid'=>int|null, 'quizerror'=>string|null].
+     * @return array With keys made, qids, cmid and quizerror.
      */
-    public static function build_rl_set(\stdClass $course, \context $context, \stdClass $category,
-                                        array $steps, string $name): array {
+    public static function build_rl_set(
+        \stdClass $course,
+        \context $context,
+        \stdClass $category,
+        array $steps,
+        string $name
+    ): array {
         global $DB, $CFG;
-        // phase3 skill name -> bank/template type (only simplify differs).
+        // The phase 3 skill name maps to a bank/template type (only simplify differs).
         $tomap = ['simplify' => 'simplify_lowest_terms'];
 
         $qids = [];
@@ -182,7 +186,7 @@ class generator {
             require_once($CFG->dirroot . '/course/modlib.php');
             require_once($CFG->dirroot . '/mod/quiz/locallib.php');
             $d = get_config('quiz');
-            // Course's top grade category (depth 1), fetched directly to avoid needing the
+            // The course top grade category (depth 1) is fetched directly to avoid needing the
             // grade_category class to be autoloaded.
             $gradecatid = (int) ($DB->get_field('grade_categories', 'id',
                 ['courseid' => $course->id, 'depth' => 1], IGNORE_MULTIPLE) ?: 0);
@@ -212,11 +216,11 @@ class generator {
             $mi->questionsperpage = 1;
             $mi->navmethod = $d->navmethod ?? 'free';
             $mi->shuffleanswers = (int) ($d->shuffleanswers ?? 1);
-            $mi->preferredbehaviour = 'adaptive';   // STACK Check + the AI tutor.
+            $mi->preferredbehaviour = 'adaptive'; // STACK Check plus the AI tutor.
             $mi->canredoquestions = 0;
-            foreach (['reviewattempt', 'reviewcorrectness', 'reviewmaxmarks', 'reviewmarks',
-                      'reviewspecificfeedback', 'reviewgeneralfeedback', 'reviewrightanswer',
-                      'reviewoverallfeedback'] as $r) {
+            $reviewfields = ['reviewattempt', 'reviewcorrectness', 'reviewmaxmarks', 'reviewmarks',
+                'reviewspecificfeedback', 'reviewgeneralfeedback', 'reviewrightanswer', 'reviewoverallfeedback'];
+            foreach ($reviewfields as $r) {
                 $mi->$r = isset($d->$r) ? (int) $d->$r : 0x10010;
             }
             $mi->showuserpicture = 0;
@@ -248,8 +252,8 @@ class generator {
             quiz_update_sumgrades($quiz);
             $result['cmid'] = (int) $mi->coursemodule;
         } catch (\Throwable $e) {
-            // add_moduleinfo runs in a delegated transaction; if it threw, roll back so we do not
-            // leave a dangling transaction. The generated questions are already committed.
+            // The add_moduleinfo call runs in a delegated transaction; if it threw, roll back so we
+            // do not leave a dangling transaction. The generated questions are already committed.
             if ($DB->is_transaction_started()) {
                 try {
                     $DB->force_transaction_rollback();
@@ -267,10 +271,10 @@ class generator {
      * Import one STACK question XML into a question category.
      *
      * Uses Moodle's standard XML question import, so the questions land in the bank exactly as a
-     * manual "Import" would. The imported ids come from the importer's own `$questionids` (the
-     * questions this call created — race-free), with a before/after category diff as a fallback.
+     * manual import would. The imported ids come from the importer's own questionids list (the
+     * questions this call created, race-free), with a before/after category diff as a fallback.
      *
-     * @param string $xml A single <quiz>…</quiz> document containing one STACK question.
+     * @param string $xml A single quiz document containing one STACK question.
      * @param \stdClass $category The target question category.
      * @param \context $context The category/course context.
      * @param \stdClass $course The course.
@@ -283,9 +287,11 @@ class generator {
 
         // Defence in depth: the XML comes from our own generation service, but don't import an
         // unexpected shape — cap the size and require exactly one STACK question, no other types.
-        if (strlen($xml) > 200000
-                || preg_match_all('/<question\s+type="stack"/i', $xml) !== 1
-                || preg_match_all('/<question\s+type="(?!stack|category)[^"]*"/i', $xml) > 0) {
+        if (
+            strlen($xml) > 200000
+            || preg_match_all('/<question\s+type="stack"/i', $xml) !== 1
+            || preg_match_all('/<question\s+type="(?!stack|category)[^"]*"/i', $xml) > 0
+        ) {
             return [];
         }
 
@@ -301,11 +307,11 @@ class generator {
         $qformat->setFilename($tmp);
         $qformat->setRealfilename('stackforge.xml');
         $qformat->setMatchgrades('error');
-        $qformat->setCatfromfile(false);       // Import into the chosen category, not one named in the file.
+        $qformat->setCatfromfile(false); // Import into the chosen category, not one named in the file.
         $qformat->setContextfromfile(false);
         $qformat->setStoponerror(true);
 
-        ob_start();   // importprocess() echoes progress HTML; swallow it.
+        ob_start(); // The importprocess() call echoes progress HTML; swallow it.
         try {
             $ok = $qformat->importpreprocess()
                 && $qformat->importprocess()

@@ -24,14 +24,11 @@
 
 namespace local_stackforge\privacy;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * This plugin stores no personal data. It relays only the chosen question type and difficulty to
  * the generation service to draft questions; nothing about any user is transmitted or stored.
  */
 class provider implements \core_privacy\local\metadata\null_provider {
-
     /**
      * Get the language string identifier explaining why this plugin stores no personal data.
      *
