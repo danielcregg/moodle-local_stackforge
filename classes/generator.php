@@ -20,12 +20,18 @@ class generator {
         }
         $payload = json_encode(['type' => $type, 'difficulty' => $difficulty, 'count' => $count]);
 
-        $curl = new \curl();
+        // ignoresecurity: the service URL is an admin-configured, trusted endpoint (often an
+        // internal address like http://generate:8092), so bypass Moodle's block on private hosts
+        // for this one call. It is never user-controlled.
+        $curl = new \curl(['ignoresecurity' => true]);
         $curl->setHeader([
             'Content-Type: application/json',
             'Authorization: Bearer ' . $token,
         ]);
-        $resp = $curl->post($base . '/generate', $payload, ['CURLOPT_TIMEOUT' => 180]);
+        $resp = $curl->post($base . '/generate', $payload, [
+            'CURLOPT_TIMEOUT' => 180,
+            'CURLOPT_IPRESOLVE' => CURL_IPRESOLVE_V4,   // Moodle container has no IPv6 egress
+        ]);
         $code = (int)($curl->get_info()['http_code'] ?? 0);
         if ($code !== 200) {
             throw new \moodle_exception('servicefail', 'local_stackforge', '',
