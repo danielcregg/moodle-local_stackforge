@@ -52,6 +52,14 @@ class generator {
         require_once($CFG->dirroot . '/question/format.php');
         require_once($CFG->dirroot . '/question/format/xml/format.php');
 
+        // Defence in depth: the XML comes from our own generation service, but don't import an
+        // unexpected shape — cap the size and require exactly one STACK question, no other types.
+        if (strlen($xml) > 200000
+                || preg_match_all('/<question\s+type="stack"/i', $xml) !== 1
+                || preg_match_all('/<question\s+type="(?!stack|category)[^"]*"/i', $xml) > 0) {
+            return false;
+        }
+
         $tmp = make_request_directory() . '/stackforge.xml';
         file_put_contents($tmp, $xml);
 
