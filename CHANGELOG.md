@@ -4,6 +4,32 @@ All notable changes to **local_stackforge** are documented in this file. The for
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0-beta] — 2026-06-24
+
+Adds a **zero-backend, in-process** generation mode, live-tested on Moodle 4.5.12.
+
+### Added
+- **In-process mode**: draft and validate STACK questions against this site's own `qtype_stack` +
+  Maxima — no external service required. Install the plugin, set an AI provider/model/key, and go.
+- New **Generation mode** setting (`auto` / `inprocess` / `external`). `auto` keeps an already-configured
+  external service (so existing sites are never silently switched), otherwise runs in-process.
+- The in-process **oracle**: instantiates each draft across every deployed seed, rejects any runtime
+  CAS error (a grammar-valid but non-elementary integrand can no longer slip through), bakes the
+  terminal answer notes, and proves the exported question passes its own question-tests via Moodle's
+  `test_question()`.
+- Asynchronous generation via an adhoc task + a job table, with live progress on the course page; a
+  scheduled task cleans up any stale scratch validation category.
+- An admin **in-process smoke-test** page (build → validate → delete one known-good question).
+
+### Changed
+- The Privacy API provider now describes, exports and deletes the generation-job records the plugin
+  stores (it is no longer a null provider).
+- The course page queues a background job instead of generating synchronously.
+
+### Security
+- The AI key is stored server-side and never sent to the browser; the AI only ever proposes a source
+  expression, gated by an allow-list grammar before it can reach Maxima.
+
 ## [1.0.0-beta] — 2026-06-23
 
 First public release, prepared for submission to the Moodle Plugins directory.
