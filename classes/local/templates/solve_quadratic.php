@@ -29,12 +29,18 @@ namespace local_stackforge\local\templates;
  * so they never coincide). The roots are computed via solve (the oracle), not by assumption.
  */
 class solve_quadratic extends base {
+    /**
+     * Build the structured question for this type.
+     *
+     * @param array $slot Optional difficulty/name/deployedSeeds.
+     * @return array The structured question (consumed by question_xml::build).
+     */
     public static function make(array $slot = []): array {
         $difficulty = $slot['difficulty'] ?? 'easy';
 
         $questionvariables = implode("\n", [
             'r1 : rand(5) + 1;',
-            'r2 : r1 + rand(4) + 1;',          // Distinct from r1.
+            'r2 : r1 + rand(4) + 1;', // Distinct from r1.
             'eq : expand((x - r1)*(x - r2)) = 0;',
             'ta1 : setify(map(rhs, solve(eq, x)));',
         ]);

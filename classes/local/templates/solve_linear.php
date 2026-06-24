@@ -29,11 +29,17 @@ namespace local_stackforge\local\templates;
  * construction.
  */
 class solve_linear extends base {
+    /**
+     * Build the structured question for this type.
+     *
+     * @param array $slot Optional difficulty/name/deployedSeeds.
+     * @return array The structured question (consumed by question_xml::build).
+     */
     public static function make(array $slot = []): array {
         $difficulty = $slot['difficulty'] ?? 'easy';
 
         $questionvariables = implode("\n", [
-            'b : rand(4) + 2;',                 // Nonzero coefficient.
+            'b : rand(4) + 2;', // Nonzero coefficient.
             'c : rand(11) - 5;',
             'd : rand(11) - 5;',
             'eq : b*x + c = d;',
@@ -73,7 +79,10 @@ class solve_linear extends base {
             ],
             'tests' => [
                 ['inputs' => ['ans1' => 'ta1'], 'expected' => ['prt1' => ['score' => 1, 'answerNote' => 'prt1-1-T']]],
-                ['inputs' => ['ans1' => 'ta1 + 1'], 'expected' => ['prt1' => ['score' => 0, 'penalty' => 0.1, 'answerNote' => 'prt1-1-F']]],
+                [
+                    'inputs' => ['ans1' => 'ta1 + 1'],
+                    'expected' => ['prt1' => ['score' => 0, 'penalty' => 0.1, 'answerNote' => 'prt1-1-F']],
+                ],
             ],
         ];
     }

@@ -72,7 +72,7 @@ class scratch_importer {
      * @return int[] The imported question ids (empty on failure).
      */
     public static function import(string $xml, \stdClass $category, \context $context, \stdClass $course): array {
-        // generator lives in the parent namespace local_stackforge, not local_stackforge\local.
+        // Generator lives in the parent namespace (local_stackforge), not local_stackforge\local.
         return \local_stackforge\generator::import_one($xml, $category, $context, $course);
     }
 

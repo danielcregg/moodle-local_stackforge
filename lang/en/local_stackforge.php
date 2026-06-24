@@ -24,9 +24,6 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$string['aifailed'] = 'The AI request failed: {$a}';
-$string['aiheading'] = 'In-process AI (zero backend)';
-$string['aiheading_desc'] = 'In-process mode validates questions against this site\'s own STACK / Maxima — no external server. It only needs an AI key to draft expressions for the differentiate and integrate types (the other six generate from built-in templates). The key is stored server-side and never reaches the browser.';
 $string['ai_key'] = 'AI API key';
 $string['ai_key_desc'] = 'API key for the chosen provider. Stored server-side and never sent to the browser. Used only in in-process mode to draft expressions for the differentiate and integrate types.';
 $string['ai_model'] = 'AI model';
@@ -34,6 +31,9 @@ $string['ai_model_desc'] = 'Model id for the chosen provider, for example gpt-4o
 $string['ai_provider'] = 'AI provider';
 $string['ai_provider_desc'] = 'Which AI service drafts source expressions in in-process mode. Leave as "None" to use only the built-in template expressions (no AI calls are made).';
 $string['ai_provider_none'] = 'None (templates only)';
+$string['aifailed'] = 'The AI request failed: {$a}';
+$string['aiheading'] = 'In-process AI (zero backend)';
+$string['aiheading_desc'] = 'In-process mode validates questions against this site\'s own STACK / Maxima — no external server. It only needs an AI key to draft expressions for the differentiate and integrate types (the other six generate from built-in templates). The key is stored server-side and never reaches the browser.';
 $string['apitoken'] = 'API token';
 $string['apitoken_desc'] = 'Bearer token for the external generation service (the FORGE_API_SECRET value). Stored server-side and never sent to the browser. Leave blank if your endpoint needs no token, or if you use in-process mode.';
 $string['backtobank'] = 'Open the question bank';

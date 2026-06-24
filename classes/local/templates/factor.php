@@ -29,6 +29,12 @@ namespace local_stackforge\local\templates;
  * over the rationals. The variable goes in the test's Options field; the Teacher Answer is ta1.
  */
 class factor extends base {
+    /**
+     * Build the structured question for this type.
+     *
+     * @param array $slot Optional difficulty/name/deployedSeeds.
+     * @return array The structured question (consumed by question_xml::build).
+     */
     public static function make(array $slot = []): array {
         $difficulty = $slot['difficulty'] ?? 'easy';
 

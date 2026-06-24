@@ -111,8 +111,11 @@ class provider implements
             if (!$context instanceof \context_course) {
                 continue;
             }
-            $records = $DB->get_records('local_stackforge_jobs',
-                ['courseid' => $context->instanceid, 'userid' => $userid], 'timecreated ASC');
+            $records = $DB->get_records(
+                'local_stackforge_jobs',
+                ['courseid' => $context->instanceid, 'userid' => $userid],
+                'timecreated ASC'
+            );
             $data = [];
             foreach ($records as $r) {
                 $data[] = [

@@ -29,6 +29,12 @@ namespace local_stackforge\local\templates;
  * This gives distinct feedback for "not equivalent" vs "equivalent but not expanded".
  */
 class expand extends base {
+    /**
+     * Build the structured question for this type.
+     *
+     * @param array $slot Optional difficulty/name/deployedSeeds.
+     * @return array The structured question (consumed by question_xml::build).
+     */
     public static function make(array $slot = []): array {
         $difficulty = $slot['difficulty'] ?? 'easy';
 

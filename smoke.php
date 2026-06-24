@@ -61,8 +61,11 @@ if (!$supported) {
     echo html_writer::start_tag('form', ['method' => 'post',
         'action' => new moodle_url('/local/stackforge/smoke.php', ['run' => 1])]);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
-    echo html_writer::tag('button', get_string('smokerun', 'local_stackforge'),
-        ['type' => 'submit', 'class' => 'btn btn-primary']);
+    echo html_writer::tag(
+        'button',
+        get_string('smokerun', 'local_stackforge'),
+        ['type' => 'submit', 'class' => 'btn btn-primary']
+    );
     echo html_writer::end_tag('form');
 }
 

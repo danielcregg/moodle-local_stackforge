@@ -31,20 +31,26 @@ namespace local_stackforge\local\templates;
  * 0) so the input fraction is not auto-cancelled before the check.
  */
 class simplify_lowest_terms extends base {
+    /**
+     * Build the structured question for this type.
+     *
+     * @param array $slot Optional difficulty/name/deployedSeeds.
+     * @return array The structured question (consumed by question_xml::build).
+     */
     public static function make(array $slot = []): array {
         $difficulty = $slot['difficulty'] ?? 'easy';
 
         $questionvariables = implode("\n", [
             'a : rand(5) + 2;',
             'expr : (x^2 - a^2)/(x - a);',
-            'ta1 : fullratsimp(expr);',     // = x + a
+            'ta1 : fullratsimp(expr);', // Equals x + a.
         ]);
 
         return [
             'name' => $slot['name'] ?? "Simplify to lowest terms ({$difficulty})",
             'type' => 'simplify_lowest_terms',
             'difficulty' => $difficulty,
-            'questionSimplify' => 0,        // Keep the student's fraction uncancelled so we can detect it.
+            'questionSimplify' => 0, // Keep the student's fraction uncancelled so we can detect it.
             'deployedSeeds' => $slot['deployedSeeds'] ?? [3, 17, 42, 101, 503],
             'questionVariables' => $questionvariables,
             'questionText' => "<p>Simplify \\( {@expr@} \\) to lowest terms.</p>\n<p>[[input:ans1]] [[validation:ans1]]</p>",

@@ -32,15 +32,26 @@ class differentiate extends base {
     /** @var string[] Safe fallback expressions (used when the AI supplies none). */
     const DEFAULT_EXPRS = ['(x-a)^3', 'a*x^3 - x', 'x^4 + a*x^2', '(x+a)^3 - x'];
 
+    /**
+     * The fallback expressions for this expr-driven type.
+     *
+     * @return string[] The default expressions.
+     */
     public static function default_exprs(): array {
         return self::DEFAULT_EXPRS;
     }
 
+    /**
+     * Build the structured question for this type.
+     *
+     * @param array $slot Optional expr/difficulty/name/deployedSeeds.
+     * @return array The structured question (consumed by question_xml::build).
+     */
     public static function make(array $slot = []): array {
         $expr = $slot['expr'] ?? self::DEFAULT_EXPRS[0];
         $difficulty = $slot['difficulty'] ?? 'easy';
 
-        // `a` randomised in 2..6 to avoid trivial/degenerate variants.
+        // Randomise a in 2..6 to avoid trivial/degenerate variants.
         $questionvariables = implode("\n", [
             'a : rand(5) + 2;',
             "expr : {$expr};",
@@ -80,7 +91,10 @@ class differentiate extends base {
             ],
             'tests' => [
                 ['inputs' => ['ans1' => 'ta1'], 'expected' => ['prt1' => ['score' => 1, 'answerNote' => 'prt1-1-T']]],
-                ['inputs' => ['ans1' => 'ta1 + 1'], 'expected' => ['prt1' => ['score' => 0, 'penalty' => 0.1, 'answerNote' => 'prt1-1-F']]],
+                [
+                    'inputs' => ['ans1' => 'ta1 + 1'],
+                    'expected' => ['prt1' => ['score' => 0, 'penalty' => 0.1, 'answerNote' => 'prt1-1-F']],
+                ],
             ],
         ];
     }

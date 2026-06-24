@@ -97,7 +97,7 @@ class pipeline {
      */
     private static function generate_external(string $type, string $difficulty): array {
         try {
-            // generator lives in the parent namespace local_stackforge, not local_stackforge\local.
+            // Generator lives in the parent namespace (local_stackforge), not local_stackforge\local.
             $questions = \local_stackforge\generator::generate($type, $difficulty, 1);
         } catch (\Throwable $e) {
             return ['ok' => false, 'xml' => null, 'reason' => $e->getMessage(), 'source' => 'external'];
@@ -180,7 +180,8 @@ class pipeline {
         if ($res['ok']) {
             return array_merge($res, ['source' => $source]);
         }
-        return ['ok' => false, 'xml' => null, 'reason' => ($res['reason'] !== '' ? $res['reason'] : $lastreason), 'source' => $source];
+        $reason = ($res['reason'] !== '') ? $res['reason'] : $lastreason;
+        return ['ok' => false, 'xml' => null, 'reason' => $reason, 'source' => $source];
     }
 
     /**

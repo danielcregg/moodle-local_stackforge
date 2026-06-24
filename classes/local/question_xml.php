@@ -172,7 +172,8 @@ class question_xml {
             '        <falsescore>' . self::score($node['falseScore'] ?? 0) . '</falsescore>',
             '        <falsepenalty>' . self::opt_score($node['falsePenalty'] ?? null) . '</falsepenalty>',
             '        <falsenextnode>' . ($node['falseNextNode'] ?? -1) . '</falsenextnode>',
-            '        <falseanswernote>' . self::escape_xml($node['falseAnswerNote'] ?? "{$prtname}-{$note}-F") . '</falseanswernote>',
+            '        <falseanswernote>'
+                . self::escape_xml($node['falseAnswerNote'] ?? "{$prtname}-{$note}-F") . '</falseanswernote>',
             '        <falsefeedback format="html">' . self::html_text($node['falseFeedback'] ?? null) . '</falsefeedback>',
             '      </node>',
         ]);

@@ -32,10 +32,21 @@ class integrate extends base {
     /** @var string[] Safe fallback integrands (all polynomials -> elementary antiderivatives). */
     const DEFAULT_EXPRS = ['a*x^2 + x', 'x^3 - a*x', 'a*x^3 + x^2', '(x + a)^2'];
 
+    /**
+     * The fallback integrands for this expr-driven type.
+     *
+     * @return string[] The default expressions.
+     */
     public static function default_exprs(): array {
         return self::DEFAULT_EXPRS;
     }
 
+    /**
+     * Build the structured question for this type.
+     *
+     * @param array $slot Optional expr/difficulty/name/deployedSeeds.
+     * @return array The structured question (consumed by question_xml::build).
+     */
     public static function make(array $slot = []): array {
         $difficulty = $slot['difficulty'] ?? 'easy';
         $expr = $slot['expr'] ?? self::DEFAULT_EXPRS[0];
@@ -86,7 +97,10 @@ class integrate extends base {
             ],
             'tests' => [
                 ['inputs' => ['ans1' => 'ta1'], 'expected' => ['prt1' => ['score' => 1, 'answerNote' => 'prt1-1-T']]],
-                ['inputs' => ['ans1' => 'ta1 + x'], 'expected' => ['prt1' => ['score' => 0, 'penalty' => 0.1, 'answerNote' => 'prt1-1-F']]],
+                [
+                    'inputs' => ['ans1' => 'ta1 + x'],
+                    'expected' => ['prt1' => ['score' => 0, 'penalty' => 0.1, 'answerNote' => 'prt1-1-F']],
+                ],
             ],
         ];
     }
