@@ -15,12 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version metadata for the STACK Forge local plugin.
- *
- * Auto-generates oracle-validated STACK questions into the course question bank. In-process mode
- * (zero backend) drafts and validates against Moodle's own qtype_stack + Maxima and needs only an AI
- * key; external mode calls the stack-question-forge generation service. The AI only ever proposes a
- * source expression — the question's own Maxima computes the answer and STACK proves it.
+ * Scheduled task definitions for local_stackforge.
  *
  * @package    local_stackforge
  * @copyright  2026 Daniel Cregg
@@ -29,12 +24,15 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component    = 'local_stackforge';
-$plugin->version      = 2026062401;
-$plugin->requires     = 2024100700;             // Moodle 4.5 (LTS).
-$plugin->supported    = [405, 405];             // Developed and tested on Moodle 4.5 LTS.
-$plugin->maturity     = MATURITY_BETA;
-$plugin->release      = '1.1.0-beta';
-$plugin->dependencies = [
-    'qtype_stack' => ANY_VERSION, // Generates and imports STACK questions only.
+$tasks = [
+    [
+        // Remove any scratch validation category a PHP fatal/timeout left behind (bypassing try/finally).
+        'classname' => 'local_stackforge\task\cleanup_scratch_task',
+        'blocking' => 0,
+        'minute' => 'R',
+        'hour' => '*/2',
+        'day' => '*',
+        'month' => '*',
+        'dayofweek' => '*',
+    ],
 ];

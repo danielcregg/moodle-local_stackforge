@@ -24,17 +24,161 @@
 
 namespace local_stackforge\privacy;
 
+use core_privacy\local\metadata\collection;
+use core_privacy\local\request\approved_contextlist;
+use core_privacy\local\request\approved_userlist;
+use core_privacy\local\request\contextlist;
+use core_privacy\local\request\userlist;
+use core_privacy\local\request\writer;
+
 /**
- * This plugin stores no personal data. It relays only the chosen question type and difficulty to
- * the generation service to draft questions; nothing about any user is transmitted or stored.
+ * The plugin stores a record of each generation job a user requests (in local_stackforge_jobs). It
+ * also discloses, to the configured AI provider, the chosen question type and difficulty when drafting
+ * — neither of which is information about a user.
  */
-class provider implements \core_privacy\local\metadata\null_provider {
+class provider implements
+    \core_privacy\local\metadata\provider,
+    \core_privacy\local\request\core_userlist_provider,
+    \core_privacy\local\request\plugin\provider {
     /**
-     * Get the language string identifier explaining why this plugin stores no personal data.
+     * Describe the data this plugin stores and discloses.
      *
-     * @return string The string identifier.
+     * @param collection $collection The collection to add metadata to.
+     * @return collection The updated collection.
      */
-    public static function get_reason(): string {
-        return 'privacy:metadata';
+    public static function get_metadata(collection $collection): collection {
+        $collection->add_database_table('local_stackforge_jobs', [
+            'userid' => 'privacy:metadata:local_stackforge_jobs:userid',
+            'courseid' => 'privacy:metadata:local_stackforge_jobs:courseid',
+            'qtype' => 'privacy:metadata:local_stackforge_jobs:qtype',
+            'difficulty' => 'privacy:metadata:local_stackforge_jobs:difficulty',
+            'status' => 'privacy:metadata:local_stackforge_jobs:status',
+            'timecreated' => 'privacy:metadata:local_stackforge_jobs:timecreated',
+        ], 'privacy:metadata:local_stackforge_jobs');
+
+        $collection->add_external_location_link('aiservice', [
+            'qtype' => 'privacy:metadata:aiservice:qtype',
+            'difficulty' => 'privacy:metadata:aiservice:difficulty',
+        ], 'privacy:metadata:aiservice');
+
+        return $collection;
+    }
+
+    /**
+     * Get the list of contexts that contain user data for the specified user.
+     *
+     * @param int $userid The user id.
+     * @return contextlist The list of course contexts.
+     */
+    public static function get_contexts_for_userid(int $userid): contextlist {
+        $contextlist = new contextlist();
+        $sql = "SELECT ctx.id
+                  FROM {local_stackforge_jobs} j
+                  JOIN {context} ctx ON ctx.instanceid = j.courseid AND ctx.contextlevel = :courselevel
+                 WHERE j.userid = :userid";
+        $contextlist->add_from_sql($sql, ['courselevel' => CONTEXT_COURSE, 'userid' => $userid]);
+        return $contextlist;
+    }
+
+    /**
+     * Get the list of users who have data within a context.
+     *
+     * @param userlist $userlist The userlist to add users to.
+     * @return void
+     */
+    public static function get_users_in_context(userlist $userlist): void {
+        $context = $userlist->get_context();
+        if (!$context instanceof \context_course) {
+            return;
+        }
+        $userlist->add_from_sql(
+            'userid',
+            "SELECT userid FROM {local_stackforge_jobs} WHERE courseid = :courseid",
+            ['courseid' => $context->instanceid]
+        );
+    }
+
+    /**
+     * Export all user data for the approved contexts.
+     *
+     * @param approved_contextlist $contextlist The approved contexts to export for.
+     * @return void
+     */
+    public static function export_user_data(approved_contextlist $contextlist): void {
+        global $DB;
+        $userid = $contextlist->get_user()->id;
+        foreach ($contextlist->get_contexts() as $context) {
+            if (!$context instanceof \context_course) {
+                continue;
+            }
+            $records = $DB->get_records('local_stackforge_jobs',
+                ['courseid' => $context->instanceid, 'userid' => $userid], 'timecreated ASC');
+            $data = [];
+            foreach ($records as $r) {
+                $data[] = [
+                    'qtype' => $r->qtype,
+                    'difficulty' => $r->difficulty,
+                    'numrequested' => $r->numrequested,
+                    'nummade' => $r->nummade,
+                    'mode' => $r->mode,
+                    'status' => $r->status,
+                    'timecreated' => \core_privacy\local\request\transform::datetime($r->timecreated),
+                ];
+            }
+            if ($data) {
+                writer::with_context($context)->export_data(
+                    [get_string('pluginname', 'local_stackforge')],
+                    (object) ['jobs' => $data]
+                );
+            }
+        }
+    }
+
+    /**
+     * Delete all data for all users in the specified context.
+     *
+     * @param \context $context The context to delete in.
+     * @return void
+     */
+    public static function delete_data_for_all_users_in_context(\context $context): void {
+        global $DB;
+        if (!$context instanceof \context_course) {
+            return;
+        }
+        $DB->delete_records('local_stackforge_jobs', ['courseid' => $context->instanceid]);
+    }
+
+    /**
+     * Delete all data for the user in the approved contexts.
+     *
+     * @param approved_contextlist $contextlist The approved contexts and user.
+     * @return void
+     */
+    public static function delete_data_for_user(approved_contextlist $contextlist): void {
+        global $DB;
+        $userid = $contextlist->get_user()->id;
+        foreach ($contextlist->get_contexts() as $context) {
+            if (!$context instanceof \context_course) {
+                continue;
+            }
+            $DB->delete_records('local_stackforge_jobs', ['courseid' => $context->instanceid, 'userid' => $userid]);
+        }
+    }
+
+    /**
+     * Delete data for multiple users within a single context.
+     *
+     * @param approved_userlist $userlist The approved users and context.
+     * @return void
+     */
+    public static function delete_data_for_users(approved_userlist $userlist): void {
+        global $DB;
+        $context = $userlist->get_context();
+        if (!$context instanceof \context_course) {
+            return;
+        }
+        [$insql, $inparams] = $DB->get_in_or_equal($userlist->get_userids(), SQL_PARAMS_NAMED);
+        $params = array_merge(['courseid' => $context->instanceid], $inparams);
+        $DB->delete_records_select('local_stackforge_jobs', "courseid = :courseid AND userid $insql", $params);
     }
 }

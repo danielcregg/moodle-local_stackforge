@@ -15,10 +15,12 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Admin settings: where the external generation service lives and its bearer token.
+ * Admin settings: generation mode (in-process vs external), the in-process AI provider, and the
+ * external generation service.
  *
- * Both default to empty: the plugin does nothing and contacts nothing until a site administrator
- * configures a trusted endpoint. The token is stored server-side and never exposed to the browser.
+ * In-process mode needs no backend: it validates against Moodle's own qtype_stack + Maxima and only
+ * needs an AI key (for the differentiate/integrate types). The external service path is retained as a
+ * fallback. Everything defaults to empty/auto: the plugin only ever contacts an AI host you configure.
  *
  * @package    local_stackforge
  * @copyright  2026 Daniel Cregg
@@ -30,6 +32,73 @@ defined('MOODLE_INTERNAL') || die();
 if ($hassiteconfig) {
     $settings = new admin_settingpage('local_stackforge', get_string('pluginname', 'local_stackforge'));
     $ADMIN->add('localplugins', $settings);
+
+    // Generation mode.
+    $settings->add(new admin_setting_configselect(
+        'local_stackforge/mode',
+        get_string('mode', 'local_stackforge'),
+        get_string('mode_desc', 'local_stackforge'),
+        'auto',
+        [
+            'auto'      => get_string('mode_auto', 'local_stackforge'),
+            'inprocess' => get_string('mode_inprocess', 'local_stackforge'),
+            'external'  => get_string('mode_external', 'local_stackforge'),
+        ]
+    ));
+
+    // In-process AI: validates locally; only needs an AI key to draft expressions (differentiate/integrate).
+    $settings->add(new admin_setting_heading(
+        'local_stackforge/aiheading',
+        get_string('aiheading', 'local_stackforge'),
+        get_string('aiheading_desc', 'local_stackforge')
+    ));
+
+    $providers = [
+        ''         => get_string('ai_provider_none', 'local_stackforge'),
+        'openai'   => 'OpenAI',
+        'groq'     => 'Groq',
+        'deepseek' => 'DeepSeek',
+        'mistral'  => 'Mistral',
+        'cerebras' => 'Cerebras',
+        'zenmux'   => 'ZenMux',
+        'claude'   => 'Anthropic (Claude)',
+        'gemini'   => 'Google (Gemini)',
+    ];
+    $settings->add(new admin_setting_configselect(
+        'local_stackforge/ai_provider',
+        get_string('ai_provider', 'local_stackforge'),
+        get_string('ai_provider_desc', 'local_stackforge'),
+        '',
+        $providers
+    ));
+    $settings->add(new admin_setting_configtext(
+        'local_stackforge/ai_model',
+        get_string('ai_model', 'local_stackforge'),
+        get_string('ai_model_desc', 'local_stackforge'),
+        '',
+        PARAM_RAW_TRIMMED
+    ));
+    $settings->add(new admin_setting_configpasswordunmask(
+        'local_stackforge/ai_key',
+        get_string('ai_key', 'local_stackforge'),
+        get_string('ai_key_desc', 'local_stackforge'),
+        ''
+    ));
+
+    // A link to run a one-question in-process smoke test (build, validate, delete).
+    $smokeurl = new moodle_url('/local/stackforge/smoke.php');
+    $settings->add(new admin_setting_heading(
+        'local_stackforge/smokeheading',
+        get_string('smokeheading', 'local_stackforge'),
+        get_string('smoke_desc', 'local_stackforge', $smokeurl->out())
+    ));
+
+    // External generation service (fallback path).
+    $settings->add(new admin_setting_heading(
+        'local_stackforge/externalheading',
+        get_string('externalheading', 'local_stackforge'),
+        get_string('externalheading_desc', 'local_stackforge')
+    ));
 
     // PARAM_RAW_TRIMMED (not PARAM_URL): the endpoint may legitimately be an internal host such as
     // http://generate:8092, which PARAM_URL would strip. The URL is validated where it is used

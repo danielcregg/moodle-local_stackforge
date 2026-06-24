@@ -15,8 +15,9 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Course page: pick a STACK question type/difficulty/count and a target category, then generate
- * AI-drafted, oracle-validated STACK questions straight into the course question bank.
+ * Course page: pick a STACK question type/difficulty/count and a target category, then queue a job
+ * that drafts and validates STACK questions (in-process against Moodle's own Maxima, or via the
+ * external service) and adds them to the course question bank.
  *
  * @package    local_stackforge
  * @copyright  2026 Daniel Cregg
@@ -26,7 +27,10 @@
 require(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/questionlib.php');
 
+use local_stackforge\local\pipeline;
+
 $courseid = required_param('courseid', PARAM_INT);
+$jobid = optional_param('job', 0, PARAM_INT);
 $course = get_course($courseid);
 require_login($course);
 $context = context_course::instance($courseid);
@@ -63,7 +67,10 @@ $difficulties = [
 question_get_default_category($context->id);
 $categories = $DB->get_records('question_categories', ['contextid' => $context->id], 'name ASC', 'id,name');
 
+$mode = pipeline::resolve_mode();
+$hasservice = trim((string) get_config('local_stackforge', 'serviceurl')) !== '';
 $result = null;
+
 if (data_submitted() && confirm_sesskey()) {
     $categoryid = required_param('category', PARAM_INT);
     if (!isset($categories[$categoryid])) {
@@ -72,11 +79,10 @@ if (data_submitted() && confirm_sesskey()) {
     $category = $DB->get_record('question_categories', ['id' => $categoryid], '*', MUST_EXIST);
 
     if (optional_param('buildquiz', 0, PARAM_INT)) {
-        // Building a quiz creates a course activity and adds questions: require the core
-        // capabilities for both, in addition to this plugin's own generate capability.
+        // Building an RL-sequenced quiz uses the external service's /sequence (Phase 3) and creates a
+        // course activity: require the core capabilities for both, plus a configured service.
         require_capability('moodle/question:add', $context);
         require_capability('moodle/course:manageactivities', $context);
-        // Build a quiz whose questions follow the RL policy's curriculum (easy -> hard).
         $seqcount = min(16, max(2, optional_param('seqcount', 10, PARAM_INT)));
         try {
             $steps = \local_stackforge\generator::sequence($seqcount);
@@ -92,7 +98,7 @@ if (data_submitted() && confirm_sesskey()) {
             $result = ['error' => $e->getMessage()];
         }
     } else {
-        // Adding generated questions to the bank requires the core question:add capability.
+        // Queue an asynchronous generation job (CAS validation + AI retries are too slow for a request).
         require_capability('moodle/question:add', $context);
         $type       = required_param('qtype', PARAM_ALPHAEXT);
         $difficulty = optional_param('difficulty', 'easy', PARAM_ALPHA);
@@ -100,18 +106,42 @@ if (data_submitted() && confirm_sesskey()) {
         if (!isset($types[$type])) {
             throw new moodle_exception('invalidparameter', 'error');
         }
-        try {
-            $questions = \local_stackforge\generator::generate($type, $difficulty, $count);
-            $made = 0;
-            foreach ($questions as $q) {
-                if (!empty($q['xml'])) {
-                    $made += count(\local_stackforge\generator::import_one($q['xml'], $category, $context, $course));
-                }
-            }
-            $result = ['n' => $made];
-        } catch (moodle_exception $e) {
-            $result = ['error' => $e->getMessage()];
-        }
+
+        $job = new stdClass();
+        $job->courseid = $courseid;
+        $job->userid = $USER->id;
+        $job->categoryid = (int) $categoryid;
+        $job->scratchcatid = 0;
+        $job->jobtype = 'generate';
+        $job->qtype = $type;
+        $job->difficulty = $difficulty;
+        $job->numrequested = $count;
+        $job->nummade = 0;
+        $job->mode = $mode;
+        $job->status = 'queued';
+        $job->qids = null;
+        $job->cmid = 0;
+        $job->errors = null;
+        $job->timecreated = time();
+        $job->timemodified = time();
+        $job->id = $DB->insert_record('local_stackforge_jobs', $job);
+
+        $task = new \local_stackforge\task\generate_questions_task();
+        $task->set_custom_data(['jobid' => $job->id]);
+        $task->set_component('local_stackforge');
+        $task->set_userid($USER->id);
+        \core\task\manager::queue_adhoc_task($task);
+
+        redirect(new moodle_url('/local/stackforge/index.php', ['courseid' => $courseid, 'job' => $job->id]));
+    }
+}
+
+// Load the job we are viewing (if any) so we can refresh the page while it runs.
+$job = null;
+if ($jobid) {
+    $job = $DB->get_record('local_stackforge_jobs', ['id' => $jobid, 'courseid' => $courseid]);
+    if ($job && in_array($job->status, ['queued', 'running'], true)) {
+        $PAGE->set_periodic_refresh_delay(4);
     }
 }
 
@@ -119,48 +149,61 @@ echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('generateheading', 'local_stackforge'));
 echo html_writer::tag('p', get_string('intro', 'local_stackforge'));
 
-if (!get_config('local_stackforge', 'serviceurl')) {
+// Show the resolved mode so authors know which path will run.
+$modelabel = get_string('mode_' . $mode, 'local_stackforge');
+echo $OUTPUT->notification(get_string('modebanner', 'local_stackforge', $modelabel), 'info');
+
+if ($mode === pipeline::MODE_EXTERNAL && !$hasservice) {
     echo $OUTPUT->notification(get_string('notconfigured', 'local_stackforge'), 'error');
 }
 
-if ($result !== null) {
-    if (isset($result['error'])) {
-        echo $OUTPUT->notification(get_string('servicefail', 'local_stackforge', $result['error']), 'error');
-    } else if (isset($result['build'])) {
-        $b = $result['build'];
-        if ($b['made'] > 0) {
-            echo $OUTPUT->notification(get_string('builtset', 'local_stackforge', $b['made']), 'success');
-            if (!empty($b['cmid'])) {
-                $link = html_writer::link(
-                    new moodle_url('/mod/quiz/view.php', ['id' => $b['cmid']]),
-                    get_string('openquiz', 'local_stackforge'),
-                    ['class' => 'btn btn-primary']
-                );
-                echo html_writer::tag('p', $link);
-            } else {
-                echo $OUTPUT->notification(get_string('quiznotbuilt', 'local_stackforge'), 'warning');
-                $link = html_writer::link(
-                    new moodle_url('/question/edit.php', ['courseid' => $courseid]),
-                    get_string('backtobank', 'local_stackforge')
-                );
-                echo html_writer::tag('p', $link);
-            }
-        } else {
-            echo $OUTPUT->notification(get_string('nonemade', 'local_stackforge', ''), 'warning');
-        }
-    } else if (($result['n'] ?? 0) > 0) {
-        echo $OUTPUT->notification(get_string('imported', 'local_stackforge', $result['n']), 'success');
+// Status of the job being viewed.
+if ($job) {
+    if ($job->status === 'queued') {
+        echo $OUTPUT->notification(get_string('jobqueued', 'local_stackforge'), 'info');
+    } else if ($job->status === 'running') {
+        echo $OUTPUT->notification(
+            get_string('jobrunning', 'local_stackforge', (object) ['made' => $job->nummade, 'total' => $job->numrequested]),
+            'info'
+        );
+    } else if ($job->status === 'done') {
+        echo $OUTPUT->notification(get_string('imported', 'local_stackforge', $job->nummade), 'success');
         $link = html_writer::link(
             new moodle_url('/question/edit.php', ['courseid' => $courseid]),
             get_string('backtobank', 'local_stackforge')
         );
         echo html_writer::tag('p', $link);
+    } else if ($job->status === 'failed') {
+        echo $OUTPUT->notification(get_string('jobfailed', 'local_stackforge'), 'error');
+    }
+    // Per-question progress log.
+    if (!empty($job->errors)) {
+        echo html_writer::tag('pre', s($job->errors), ['class' => 'local-stackforge-joblog']);
+    }
+}
+
+if (isset($result['error'])) {
+    echo $OUTPUT->notification(get_string('servicefail', 'local_stackforge', $result['error']), 'error');
+} else if (isset($result['build'])) {
+    $b = $result['build'];
+    if ($b['made'] > 0) {
+        echo $OUTPUT->notification(get_string('builtset', 'local_stackforge', $b['made']), 'success');
+        if (!empty($b['cmid'])) {
+            $link = html_writer::link(
+                new moodle_url('/mod/quiz/view.php', ['id' => $b['cmid']]),
+                get_string('openquiz', 'local_stackforge'),
+                ['class' => 'btn btn-primary']
+            );
+            echo html_writer::tag('p', $link);
+        } else {
+            echo $OUTPUT->notification(get_string('quiznotbuilt', 'local_stackforge'), 'warning');
+        }
     } else {
         echo $OUTPUT->notification(get_string('nonemade', 'local_stackforge', ''), 'warning');
     }
 }
 
-// The form (plain HTML, minimal and robust).
+// The generate form (plain HTML, minimal and robust).
 $catoptions = [];
 foreach ($categories as $cat) {
     $catoptions[$cat->id] = format_string($cat->name);
@@ -196,20 +239,30 @@ echo html_writer::tag(
     ['type' => 'submit', 'class' => 'btn btn-primary local-stackforge-gen']
 );
 
-// Build a full RL-sequenced quiz (questions follow the policy easy-to-hard curriculum).
-echo html_writer::empty_tag('hr', ['class' => 'local-stackforge-sep']);
-echo html_writer::tag('h4', get_string('buildquizheading', 'local_stackforge'));
-echo html_writer::tag('p', get_string('buildquizintro', 'local_stackforge'));
-echo html_writer::start_div('form-group');
-echo html_writer::tag('label', get_string('seqcount', 'local_stackforge'), ['for' => 'seqcount']);
-echo html_writer::select(array_combine(range(4, 16), range(4, 16)), 'seqcount', 10, false, ['id' => 'seqcount']);
-echo html_writer::end_div();
-echo html_writer::tag(
-    'button',
-    get_string('buildquizbtn', 'local_stackforge'),
-    ['type' => 'submit', 'name' => 'buildquiz', 'value' => '1', 'class' => 'btn btn-secondary local-stackforge-build']
-);
-
 echo html_writer::end_tag('form');
+
+// Build a full RL-sequenced quiz — external service only (Phase 3 policy lives in the backend).
+if ($hasservice) {
+    echo html_writer::empty_tag('hr', ['class' => 'local-stackforge-sep']);
+    echo html_writer::tag('h4', get_string('buildquizheading', 'local_stackforge'));
+    echo html_writer::tag('p', get_string('buildquizintro', 'local_stackforge'));
+    echo html_writer::start_tag('form', ['method' => 'post',
+        'action' => new moodle_url('/local/stackforge/index.php', ['courseid' => $courseid])]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::start_div('form-group');
+    echo html_writer::tag('label', get_string('category', 'local_stackforge'), ['for' => 'rlcategory']);
+    echo html_writer::select($catoptions, 'category', array_key_first($catoptions), false, ['id' => 'rlcategory']);
+    echo html_writer::end_div();
+    echo html_writer::start_div('form-group');
+    echo html_writer::tag('label', get_string('seqcount', 'local_stackforge'), ['for' => 'seqcount']);
+    echo html_writer::select(array_combine(range(4, 16), range(4, 16)), 'seqcount', 10, false, ['id' => 'seqcount']);
+    echo html_writer::end_div();
+    echo html_writer::tag(
+        'button',
+        get_string('buildquizbtn', 'local_stackforge'),
+        ['type' => 'submit', 'name' => 'buildquiz', 'value' => '1', 'class' => 'btn btn-secondary local-stackforge-build']
+    );
+    echo html_writer::end_tag('form');
+}
 
 echo $OUTPUT->footer();
