@@ -172,11 +172,13 @@ if ($mode === pipeline::MODE_EXTERNAL && !$hasservice) {
 
 // In-process + core-AI drafting needs the AI policy accepted: inform the author and offer to accept.
 // (Without it, generation still works using the deterministic template expressions.)
-if ($mode === pipeline::MODE_INPROCESS
-        && \local_stackforge\local\ai_client::resolve_backend($context) === 'core'
-        && \local_stackforge\local\core_ai::available()
-        && !\local_stackforge\local\core_ai::policy_accepted((int) $USER->id)
-        && has_capability('moodle/ai:acceptpolicy', context_user::instance($USER->id))) {
+if (
+    $mode === pipeline::MODE_INPROCESS
+    && \local_stackforge\local\ai_client::resolve_backend($context) === 'core'
+    && \local_stackforge\local\core_ai::available()
+    && !\local_stackforge\local\core_ai::policy_accepted((int) $USER->id)
+    && has_capability('moodle/ai:acceptpolicy', context_user::instance($USER->id))
+) {
     echo $OUTPUT->notification(get_string('aipolicynotice', 'local_stackforge'), 'warning');
     $policytext = \local_stackforge\local\core_ai::policy_text();
     if ($policytext !== '') {
