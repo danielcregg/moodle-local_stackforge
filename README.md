@@ -105,6 +105,31 @@ For each drafted question the plugin imports it into a temporary, job-scoped scr
 The scratch category is deleted immediately afterwards; a scheduled task removes any scratch a fatal
 or timeout might leave behind.
 
+## Upgrading & version compatibility
+
+In-process mode calls into `qtype_stack`'s own question-testing internals, so it is coupled to the
+STACK version. This is engineered to be low-risk:
+
+- **It is an authoring tool.** Once a question is generated it is a normal `<question type="stack">` in
+  your bank with **no dependency on this plugin**. A plugin issue can never affect an in-progress quiz
+  attempt, an existing question, or a running exam — the worst case is "the *Generate* button is
+  unavailable until patched."
+- **It fails safe.** Every CAS call is wrapped, and the final check re-runs the exported question's own
+  question-tests, so a drifted STACK API makes generation *stop*, never produce a wrong question.
+- **It tells you.** A feature-probe disables in-process with a clear message if a required API is
+  missing, and the settings page + smoke-test page show a warning if the installed `qtype_stack` is
+  **newer than the version this release was verified against** (currently `2026042200`, STACK 4.12).
+
+Recommended practice:
+
+1. **Pin `qtype_stack` during teaching terms**; upgrade STACK in breaks, not mid-season.
+2. **After any `qtype_stack` upgrade, run the in-process smoke test** (Settings → STACK Forge → run the
+   smoke test) before relying on generation that term. It builds, validates and deletes one known-good
+   question in a few seconds.
+3. If in-process ever stops working after a STACK upgrade, switch **Generation mode** to *External* (if
+   you run a backend) or simply hold off generating until the plugin is updated — nothing already in
+   your bank is affected.
+
 ## Privacy
 
 This plugin records each **generation job** a user requests (in `local_stackforge_jobs`: the user, the

@@ -34,6 +34,43 @@ namespace local_stackforge\local;
  * so any CAS error becomes a clean rejection rather than a fatal.
  */
 class inprocess_validator {
+    /** @var int The qtype_stack version the in-process path was verified against (image 2026042200). */
+    const TESTED_QTYPE_STACK = 2026042200;
+
+    /**
+     * The qtype_stack version the in-process path was verified against.
+     *
+     * @return int The tested version (YYYYMMDDXX).
+     */
+    public static function tested_qtype_stack(): int {
+        return self::TESTED_QTYPE_STACK;
+    }
+
+    /**
+     * The qtype_stack version installed on this site.
+     *
+     * @return int The installed version, or 0 if qtype_stack is absent.
+     */
+    public static function installed_qtype_stack(): int {
+        return (int) get_config('qtype_stack', 'version');
+    }
+
+    /**
+     * Whether the installed qtype_stack is newer than the version the in-process path was verified
+     * against. The feature-probe + per-call try/catch already keep a drifted API fail-safe (generation
+     * stops rather than producing bad questions); this is the proactive heads-up to re-run the smoke
+     * test after a STACK upgrade.
+     *
+     * @return array|null ['installed' => int, 'tested' => int] when newer, else null.
+     */
+    public static function version_warning(): ?array {
+        $installed = self::installed_qtype_stack();
+        if ($installed > 0 && $installed > self::TESTED_QTYPE_STACK) {
+            return ['installed' => $installed, 'tested' => self::TESTED_QTYPE_STACK];
+        }
+        return null;
+    }
+
     /**
      * Feature-probe: is the in-process path supported by the installed qtype_stack?
      *

@@ -81,6 +81,7 @@ $string['privacy:metadata:local_stackforge_jobs:status'] = 'The status of the ge
 $string['privacy:metadata:local_stackforge_jobs:timecreated'] = 'When the generation job was requested.';
 $string['privacy:metadata:local_stackforge_jobs:userid'] = 'The user who requested the generation job.';
 $string['qtype'] = 'Question type';
+$string['qtypeversionwarning'] = 'STACK Forge\'s in-process mode was verified against qtype_stack version {$a->tested}. This site has version {$a->installed}. In-process generation may still work, but run the in-process smoke test to confirm before relying on it this term.';
 $string['quizintro'] = 'Auto-built from the teaching policy: the questions follow the policy\'s easy to hard curriculum.';
 $string['quizname'] = 'RL Adaptive Quiz ({$a})';
 $string['quiznotbuilt'] = 'The questions were added to the question bank, but the quiz could not be auto-created on this site. Build a quiz from the category manually.';

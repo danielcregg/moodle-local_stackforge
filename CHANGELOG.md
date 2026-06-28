@@ -20,6 +20,8 @@ Adds a **zero-backend, in-process** generation mode, live-tested on Moodle 4.5.1
 - Asynchronous generation via an adhoc task + a job table, with live progress on the course page; a
   scheduled task cleans up any stale scratch validation category.
 - An admin **in-process smoke-test** page (build → validate → delete one known-good question).
+- A **version-drift warning** on the settings and smoke-test pages when the installed `qtype_stack` is
+  newer than the version in-process mode was verified against, prompting a re-run of the smoke test.
 
 ### Changed
 - The Privacy API provider now describes, exports and deletes the generation-job records the plugin

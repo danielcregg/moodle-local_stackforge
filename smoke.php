@@ -40,6 +40,11 @@ $PAGE->set_heading(get_string('smokeheading', 'local_stackforge'));
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('smokeheading', 'local_stackforge'));
 
+$drift = \local_stackforge\local\inprocess_validator::version_warning();
+if ($drift !== null) {
+    echo $OUTPUT->notification(get_string('qtypeversionwarning', 'local_stackforge', (object) $drift), 'warning');
+}
+
 [$supported, $why] = \local_stackforge\local\inprocess_validator::inprocess_supported();
 if (!$supported) {
     echo $OUTPUT->notification(get_string('smokeunsupported', 'local_stackforge', $why), 'error');

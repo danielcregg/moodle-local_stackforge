@@ -85,12 +85,22 @@ if ($hassiteconfig) {
         ''
     ));
 
-    // A link to run a one-question in-process smoke test (build, validate, delete).
+    // A link to run a one-question in-process smoke test (build, validate, delete). If the installed
+    // qtype_stack is newer than the version the in-process path was verified against, prepend a heads-up
+    // to re-run that smoke test.
     $smokeurl = new moodle_url('/local/stackforge/smoke.php');
+    $smokedesc = get_string('smoke_desc', 'local_stackforge', $smokeurl->out());
+    $drift = \local_stackforge\local\inprocess_validator::version_warning();
+    if ($drift !== null) {
+        $smokedesc = html_writer::div(
+            get_string('qtypeversionwarning', 'local_stackforge', (object) $drift),
+            'alert alert-warning'
+        ) . $smokedesc;
+    }
     $settings->add(new admin_setting_heading(
         'local_stackforge/smokeheading',
         get_string('smokeheading', 'local_stackforge'),
-        get_string('smoke_desc', 'local_stackforge', $smokeurl->out())
+        $smokedesc
     ));
 
     // External generation service (fallback path).
