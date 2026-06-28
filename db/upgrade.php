@@ -64,5 +64,16 @@ function xmldb_local_stackforge_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026062401, 'local', 'stackforge');
     }
 
+    if ($oldversion < 2026062800) {
+        // The new "AI backend" setting defaults to 'auto'. Pin sites already using this plugin's own
+        // AI key to 'own' so they are not silently switched to core AI for expression drafting.
+        $current = get_config('local_stackforge', 'aibackend');
+        if ($current === false || $current === '') {
+            $hasownkey = trim((string) get_config('local_stackforge', 'ai_key')) !== '';
+            set_config('aibackend', $hasownkey ? 'own' : 'auto', 'local_stackforge');
+        }
+        upgrade_plugin_savepoint(true, 2026062800, 'local', 'stackforge');
+    }
+
     return true;
 }

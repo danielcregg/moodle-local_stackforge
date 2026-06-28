@@ -53,6 +53,22 @@ if ($hassiteconfig) {
         get_string('aiheading_desc', 'local_stackforge')
     ));
 
+    // Which AI backend drafts the expression: Moodle's built-in core AI (reuses a site-configured
+    // provider/key, with Moodle's AI policy + logging) or this plugin's own provider/key below. Auto
+    // prefers core when available, else this plugin's own provider. Either way the oracle validates the
+    // result, and the deterministic template default is used if no AI is available.
+    $settings->add(new admin_setting_configselect(
+        'local_stackforge/aibackend',
+        get_string('aibackend', 'local_stackforge'),
+        get_string('aibackend_desc', 'local_stackforge'),
+        'auto',
+        [
+            'auto' => get_string('aibackend_auto', 'local_stackforge'),
+            'core' => get_string('aibackend_core', 'local_stackforge'),
+            'own'  => get_string('aibackend_own', 'local_stackforge'),
+        ]
+    ));
+
     $providers = [
         ''         => get_string('ai_provider_none', 'local_stackforge'),
         'openai'   => 'OpenAI',

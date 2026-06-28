@@ -72,6 +72,19 @@ $hasservice = trim((string) get_config('local_stackforge', 'serviceurl')) !== ''
 $result = null;
 
 if (data_submitted() && confirm_sesskey()) {
+    // Record the user's explicit acceptance of the AI policy (enables core-AI drafting), then reload.
+    // Handled before the generate params (the accept form sends no category/type).
+    if (optional_param('acceptaipolicy', 0, PARAM_INT)) {
+        require_capability('moodle/ai:acceptpolicy', context_user::instance($USER->id));
+        $accepted = \local_stackforge\local\core_ai::record_policy((int) $USER->id, $context);
+        redirect(
+            $PAGE->url,
+            get_string($accepted ? 'policyaccepted' : 'policyacceptfailed', 'local_stackforge'),
+            null,
+            $accepted ? \core\output\notification::NOTIFY_SUCCESS : \core\output\notification::NOTIFY_ERROR
+        );
+    }
+
     $categoryid = required_param('category', PARAM_INT);
     if (!isset($categories[$categoryid])) {
         throw new moodle_exception('invalidparameter', 'error');
@@ -155,6 +168,28 @@ echo $OUTPUT->notification(get_string('modebanner', 'local_stackforge', $modelab
 
 if ($mode === pipeline::MODE_EXTERNAL && !$hasservice) {
     echo $OUTPUT->notification(get_string('notconfigured', 'local_stackforge'), 'error');
+}
+
+// In-process + core-AI drafting needs the AI policy accepted: inform the author and offer to accept.
+// (Without it, generation still works using the deterministic template expressions.)
+if ($mode === pipeline::MODE_INPROCESS
+        && \local_stackforge\local\ai_client::resolve_backend($context) === 'core'
+        && \local_stackforge\local\core_ai::available()
+        && !\local_stackforge\local\core_ai::policy_accepted((int) $USER->id)
+        && has_capability('moodle/ai:acceptpolicy', context_user::instance($USER->id))) {
+    echo $OUTPUT->notification(get_string('aipolicynotice', 'local_stackforge'), 'warning');
+    $policytext = \local_stackforge\local\core_ai::policy_text();
+    if ($policytext !== '') {
+        echo html_writer::tag('div', nl2br(s($policytext)), ['class' => 'local-stackforge-policy']);
+    }
+    echo html_writer::start_tag('form', ['method' => 'post', 'action' => $PAGE->url]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::tag(
+        'button',
+        get_string('policyaccept', 'local_stackforge'),
+        ['type' => 'submit', 'name' => 'acceptaipolicy', 'value' => '1', 'class' => 'btn btn-primary']
+    );
+    echo html_writer::end_tag('form');
 }
 
 // Status of the job being viewed.

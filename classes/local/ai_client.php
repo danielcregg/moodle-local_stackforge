@@ -80,41 +80,94 @@ class ai_client {
     }
 
     /**
+     * Resolve which AI backend drafts the expression: 'core' (Moodle's AI subsystem) or 'own'.
+     *
+     * @param \context|null $context The request context (core needs one; null forces 'own' in auto).
+     * @return string 'core' or 'own'.
+     */
+    public static function resolve_backend(?\context $context): string {
+        $backend = (string) get_config('local_stackforge', 'aibackend');
+        if ($backend === 'core') {
+            return 'core';
+        }
+        if ($backend === 'own') {
+            return 'own';
+        }
+        // Auto (default): prefer core only when it is actually available, else this plugin's provider.
+        return ($context !== null && core_ai::available()) ? 'core' : 'own';
+    }
+
+    /**
+     * Whether an AI drafting backend is usable (so the pipeline tries AI before the template default).
+     *
+     * @param \context|null $context The request context.
+     * @return bool True if core AI is available, or this plugin's own provider is configured.
+     */
+    public static function ai_available(?\context $context): bool {
+        return self::resolve_backend($context) === 'core' ? core_ai::available() : self::configured();
+    }
+
+    /**
      * Propose a safe source expression for an expr-driven type.
+     *
+     * The AI only proposes an expression; the oracle still validates it, and the template default is
+     * used whenever this returns null. With the core backend, an unaccepted AI policy simply yields null
+     * (no exception): generation continues with the deterministic template default rather than routing
+     * the request to a different provider.
      *
      * @param string $type The question type.
      * @param string $difficulty The requested difficulty.
+     * @param \context|null $context The request context (for the core AI backend).
+     * @param int $userid The requesting user id (for the core AI policy check; defaults to current user).
      * @return string|null A grammar-safe expression, or null if unavailable/unusable.
      */
-    public static function propose_expr(string $type, string $difficulty): ?string {
-        if (!isset(self::EXPR_TYPES[$type]) || !self::configured()) {
+    public static function propose_expr(string $type, string $difficulty, ?\context $context = null, int $userid = 0): ?string {
+        if (!isset(self::EXPR_TYPES[$type])) {
             return null;
         }
-        $providerid = (string) get_config('local_stackforge', 'ai_provider');
-        $model = (string) get_config('local_stackforge', 'ai_model');
-        $key = (string) get_config('local_stackforge', 'ai_key');
-        $p = self::PROVIDERS[$providerid];
         $prompt = self::build_prompt($type, $difficulty);
+        $text = null;
 
-        try {
-            switch ($p['kind']) {
-                case 'openai':
-                    $text = self::call_openai($p['endpoint'], $key, $model, self::SYSTEM, $prompt);
-                    break;
-                case 'gemini':
-                    $text = self::call_gemini($p['endpoint'], $key, $model, self::SYSTEM, $prompt);
-                    break;
-                case 'anthropic':
-                    $text = self::call_anthropic($p['endpoint'], $key, $model, self::SYSTEM, $prompt);
-                    break;
-                default:
-                    return null;
+        if (self::resolve_backend($context) === 'core') {
+            if ($userid <= 0) {
+                $userid = (int) ($GLOBALS['USER']->id ?? 0);
             }
-        } catch (\Throwable $e) {
-            debugging('local_stackforge AI proposal failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
-            return null;
+            // Core needs the AI policy accepted; if not, skip AI and let the template default apply.
+            if (!core_ai::available() || !core_ai::policy_accepted($userid)) {
+                return null;
+            }
+            $text = core_ai::generate_text($context, $userid, self::SYSTEM . "\n\n" . $prompt);
+        } else {
+            if (!self::configured()) {
+                return null;
+            }
+            $providerid = (string) get_config('local_stackforge', 'ai_provider');
+            $model = (string) get_config('local_stackforge', 'ai_model');
+            $key = (string) get_config('local_stackforge', 'ai_key');
+            $p = self::PROVIDERS[$providerid];
+            try {
+                switch ($p['kind']) {
+                    case 'openai':
+                        $text = self::call_openai($p['endpoint'], $key, $model, self::SYSTEM, $prompt);
+                        break;
+                    case 'gemini':
+                        $text = self::call_gemini($p['endpoint'], $key, $model, self::SYSTEM, $prompt);
+                        break;
+                    case 'anthropic':
+                        $text = self::call_anthropic($p['endpoint'], $key, $model, self::SYSTEM, $prompt);
+                        break;
+                    default:
+                        return null;
+                }
+            } catch (\Throwable $e) {
+                debugging('local_stackforge AI proposal failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+                return null;
+            }
         }
 
+        if ($text === null || trim($text) === '') {
+            return null;
+        }
         $json = self::extract_json($text);
         if (!is_array($json) || !isset($json['expr']) || !is_string($json['expr']) || trim($json['expr']) === '') {
             return null;

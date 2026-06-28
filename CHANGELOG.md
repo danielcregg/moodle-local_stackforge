@@ -11,6 +11,11 @@ Adds a **zero-backend, in-process** generation mode, live-tested on Moodle 4.5.1
 ### Added
 - **In-process mode**: draft and validate STACK questions against this site's own `qtype_stack` +
   Maxima — no external service required. Install the plugin, set an AI provider/model/key, and go.
+- **Hybrid AI backend** (`AI backend` setting: auto / core / own): draft the source expression via
+  Moodle's built-in core AI (reusing a site-configured provider, with Moodle's AI policy + logging) or
+  this plugin's own key. Auto prefers core when available, else the own provider; the deterministic
+  template default is used if no AI is available. The AI still only proposes an expression — the oracle
+  validates it — and existing own-configured sites are migrated to `own` (never silently switched).
 - New **Generation mode** setting (`auto` / `inprocess` / `external`). `auto` keeps an already-configured
   external service (so existing sites are never silently switched), otherwise runs in-process.
 - The in-process **oracle**: instantiates each draft across every deployed seed, rejects any runtime

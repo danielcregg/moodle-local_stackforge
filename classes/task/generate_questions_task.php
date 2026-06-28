@@ -76,7 +76,7 @@ class generate_questions_task extends \core\task\adhoc_task {
             }
 
             for ($i = 0; $i < (int) $job->numrequested; $i++) {
-                $res = pipeline::generate_one($job->qtype, $job->difficulty, $i, $context, $course, $scratch);
+                $res = pipeline::generate_one($job->qtype, $job->difficulty, $i, $context, $course, $scratch, (int) $job->userid);
                 if (!empty($res['ok']) && !empty($res['xml'])) {
                     $imported = generator::import_one($res['xml'], $category, $context, $course);
                     foreach ($imported as $qid) {

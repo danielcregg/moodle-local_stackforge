@@ -70,6 +70,7 @@ class pipeline {
      * @param \context $context The course context.
      * @param \stdClass $course The course.
      * @param \stdClass|null $scratchcat The scratch category (required for in-process; null for external).
+     * @param int $userid The requesting user id (for the core AI policy check).
      * @param int $attempts Maximum AI attempts before the template fallback.
      * @return array ok|xml|reason|source plus name|type|difficulty on success.
      */
@@ -80,12 +81,13 @@ class pipeline {
         \context $context,
         \stdClass $course,
         ?\stdClass $scratchcat,
+        int $userid = 0,
         int $attempts = 3
     ): array {
         if (self::resolve_mode() === self::MODE_EXTERNAL) {
             return self::generate_external($type, $difficulty);
         }
-        return self::generate_inprocess($type, $difficulty, $index, $context, $course, $scratchcat, $attempts);
+        return self::generate_inprocess($type, $difficulty, $index, $context, $course, $scratchcat, $userid, $attempts);
     }
 
     /**
@@ -125,6 +127,7 @@ class pipeline {
      * @param \context $context The course context.
      * @param \stdClass $course The course.
      * @param \stdClass|null $scratchcat The scratch category.
+     * @param int $userid The requesting user id (for the core AI policy check).
      * @param int $attempts Maximum AI attempts.
      * @return array The result.
      */
@@ -135,6 +138,7 @@ class pipeline {
         \context $context,
         \stdClass $course,
         ?\stdClass $scratchcat,
+        int $userid = 0,
         int $attempts = 3
     ): array {
         if (!template_registry::exists($type)) {
@@ -150,10 +154,10 @@ class pipeline {
 
         $lastreason = 'validation failed';
 
-        // AI-proposed expressions first (only for expr-driven types, when configured).
-        if (ai_client::uses_expr($type) && ai_client::configured()) {
+        // AI-proposed expressions first (only for expr-driven types, when an AI backend is usable).
+        if (ai_client::uses_expr($type) && ai_client::ai_available($context)) {
             for ($i = 0; $i < $attempts; $i++) {
-                $expr = ai_client::propose_expr($type, $difficulty);
+                $expr = ai_client::propose_expr($type, $difficulty, $context, $userid);
                 if ($expr === null) {
                     continue;
                 }
@@ -176,7 +180,7 @@ class pipeline {
         }
         $q = template_registry::make($type, $slot);
         $res = inprocess_validator::validate($q, $context, $course, $scratchcat);
-        $source = (ai_client::uses_expr($type) && ai_client::configured()) ? 'fallback' : 'template';
+        $source = (ai_client::uses_expr($type) && ai_client::ai_available($context)) ? 'fallback' : 'template';
         if ($res['ok']) {
             return array_merge($res, ['source' => $source]);
         }
