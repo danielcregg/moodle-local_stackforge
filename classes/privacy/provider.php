@@ -63,8 +63,9 @@ class provider implements
             'difficulty' => 'privacy:metadata:aiservice:difficulty',
         ], 'privacy:metadata:aiservice');
 
-        // The on-device backend downloads the model from a public CDN in the browser; no personal data.
-        $collection->add_external_location_link('ondevicecdn', [], 'privacy:metadata:ondevicecdn');
+        // The on-device backend downloads the model from a public CDN in the browser; that is a static
+        // asset fetch that sends no personal data, so (like the hinter, which likewise does not declare
+        // its model CDN) it is not a privacy external-location.
 
         return $collection;
     }

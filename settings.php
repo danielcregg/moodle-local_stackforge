@@ -78,13 +78,13 @@ if ($hassiteconfig) {
         'local_stackforge/ondevicemodel',
         get_string('ondevicemodel', 'local_stackforge'),
         get_string('ondevicemodel_desc', 'local_stackforge'),
-        'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
+        'gemma-2-2b-it-q4f16_1-MLC',
         [
-            'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC' => 'Qwen2.5-Coder 1.5B Instruct (default)',
+            'gemma-2-2b-it-q4f16_1-MLC'               => 'Gemma 2 2B Instruct (default; best oracle-pass)',
+            'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC' => 'Qwen2.5-Coder 1.5B Instruct',
             'Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC' => 'Qwen2.5-Coder 0.5B Instruct (smallest, fastest)',
             'Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC'   => 'Qwen2.5-Coder 3B Instruct (larger, slower)',
             'Llama-3.2-3B-Instruct-q4f16_1-MLC'       => 'Llama 3.2 3B Instruct',
-            'gemma-2-2b-it-q4f16_1-MLC'               => 'Gemma 2 2B Instruct (cache-shared with the hinter)',
         ]
     ));
 

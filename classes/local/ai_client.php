@@ -43,8 +43,8 @@ class ai_client {
         'gemini'   => ['kind' => 'gemini', 'endpoint' => 'https://generativelanguage.googleapis.com/v1beta/models/'],
     ];
 
-    /** @var string The provisional on-device (WebLLM) model when the ondevicemodel setting is unset. */
-    const DEFAULT_ONDEVICE_MODEL = 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC';
+    /** @var string The default on-device (WebLLM) model when the ondevicemodel setting is unset. */
+    const DEFAULT_ONDEVICE_MODEL = 'gemma-2-2b-it-q4f16_1-MLC';
 
     /**
      * Whether a type consumes an AI-supplied expression (only the two expr-driven types do).
@@ -83,10 +83,13 @@ class ai_client {
      *
      * Unlike the hinter (where answer-leak forces a fixed 0%-leak model), generation has no answer to
      * leak: the model only proposes an expression and the SERVER oracle validates it. So the model is
-     * configurable, and the default is a small coder/instruct model good at structured JSON output.
+     * configurable.
      *
-     * TODO: The generation-model default is provisional. Pick the winner with a Janus A100 eval
-     * (valid-JSON rate + oracle-pass rate, temperatures 0.3 to 0.5) per the design doc's Open Questions.
+     * A Janus A100 eval (valid-JSON + oracle-pass rate; 5 WebLLM-deployable candidates x 2 types x 3
+     * difficulties x 3 temperatures) picked gemma-2-2b: highest oracle-pass rate (96.7% of all trials,
+     * 98.9% of valid-JSON), because the coder models proposed expressions outside the bounded allow-list
+     * far more often (gate-rejects: gemma-2-2b 2 vs Qwen2.5-Coder-1.5B 20). It also shares the hinter's
+     * model cache. See research/data/gen_model_eval.json.
      *
      * @return string A WebLLM prebuilt model id.
      */

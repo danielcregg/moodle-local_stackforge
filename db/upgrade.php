@@ -81,7 +81,7 @@ function xmldb_local_stackforge_upgrade($oldversion) {
         // untouched, so no site is silently switched to on-device. Only seed the new on-device model
         // default if it is unset, so the browser knows which model to run when on-device is selected.
         if (get_config('local_stackforge', 'ondevicemodel') === false) {
-            set_config('ondevicemodel', 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC', 'local_stackforge');
+            set_config('ondevicemodel', 'gemma-2-2b-it-q4f16_1-MLC', 'local_stackforge');
         }
         if (get_config('local_stackforge', 'errormemory') === false) {
             set_config('errormemory', 1, 'local_stackforge');
