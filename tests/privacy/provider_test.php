@@ -64,13 +64,13 @@ final class provider_test extends \core_privacy\tests\provider_testcase {
     }
 
     /**
-     * The metadata describes the jobs table and the AI external location.
+     * The metadata describes the jobs table, the AI external location and the on-device model CDN.
      *
      * @return void
      */
     public function test_get_metadata(): void {
         $collection = provider::get_metadata(new collection('local_stackforge'));
-        $this->assertCount(2, $collection->get_collection());
+        $this->assertCount(3, $collection->get_collection());
     }
 
     /**

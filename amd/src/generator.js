@@ -287,30 +287,33 @@ const runBatch = (config, panel) => {
     let attempts = 0;
     const maxAttempts = Math.max(total, total * 2);
 
-    return getEngine(config, config.ondevicemodel, onProgress).then((engine) => {
-        // Sequential loop: draft, then validate through the oracle, discard+replace up to the 2x cap.
-        const step = () => {
-            if (made >= total || attempts >= maxAttempts) {
-                const done = (strings.done || '{made}/{total}')
-                    .replace('{made}', String(made)).replace('{total}', String(total));
-                setStatus(panel, done);
-                if (made > 0 && config.bankurl) {
-                    const link = doc.createElement('a');
-                    link.href = config.bankurl;
-                    link.textContent = ' ' + (strings.backtobank || '');
-                    panel.appendChild(link);
-                }
-                return Promise.resolve();
+    // The sequential draft->validate loop. Defined at this scope with the engine passed in (rather than
+    // inside the getEngine().then() callback) so its promise chain is not nested inside another then()
+    // callback, keeping eslint-plugin-promise (no-nesting) satisfied. Mirrors hinter.js's flat-chain style.
+    const step = (engine) => {
+        if (made >= total || attempts >= maxAttempts) {
+            const done = (strings.done || '{made}/{total}')
+                .replace('{made}', String(made)).replace('{total}', String(total));
+            setStatus(panel, done);
+            if (made > 0 && config.bankurl) {
+                const link = doc.createElement('a');
+                link.href = config.bankurl;
+                link.textContent = ' ' + (strings.backtobank || '');
+                panel.appendChild(link);
             }
-            attempts++;
-            setStatus(panel, strings.validating || '');
-            return runModel(engine, base, avoid, used, attempts).then((raw) => {
+            return Promise.resolve();
+        }
+        attempts++;
+        setStatus(panel, strings.validating || '');
+        return runModel(engine, base, avoid, used, attempts)
+            .then((raw) => {
                 const expr = extractExpr(raw);
                 if (!expr) {
                     return null;
                 }
                 return postValidate(config, {type: type, difficulty: difficulty, expr: expr, category: category});
-            }).then((res) => {
+            })
+            .then((res) => {
                 if (res && res.ok) {
                     made++;
                     showProgress(config, panel, made, total);
@@ -318,13 +321,16 @@ const runBatch = (config, panel) => {
                     avoid.push(res.hint);
                     writeAvoidMemory(config, type, avoid);
                 }
-                return step();
-            }).catch(() => step());
-        };
-        return step();
-    }).catch(() => {
-        setStatus(panel, strings.unavailable || '');
-    });
+                return step(engine);
+            })
+            .catch(() => step(engine));
+    };
+
+    return getEngine(config, config.ondevicemodel, onProgress)
+        .then((engine) => step(engine))
+        .catch(() => {
+            setStatus(panel, strings.unavailable || '');
+        });
 };
 
 /**
@@ -344,7 +350,8 @@ export const init = (config) => {
     }
     btn.addEventListener('click', () => {
         btn.disabled = true;
-        runBatch(config, panel).finally(() => {
+        // Return the chain so promise/catch-or-return is satisfied (runBatch already catches internally).
+        return runBatch(config, panel).finally(() => {
             btn.disabled = false;
         });
     });
