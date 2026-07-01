@@ -9,3 +9,5 @@ Feature: STACK Forge administration settings
     And I visit "/admin/settings.php?section=local_stackforge"
     Then I should see "Generation service URL"
     And I should see "API token"
+    And I should see "On-device model"
+    And I should see "Remember on-device failures"

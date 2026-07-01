@@ -42,9 +42,10 @@ page queues the job and shows live progress rather than blocking the request.
 - **Moodle 4.5 LTS** or later (developed and tested on 4.5; `$plugin->supported = [405, 405]`).
 - The **STACK question type** (`qtype_stack`) installed and working (with its Maxima configured). This
   plugin declares `qtype_stack` as a dependency and, in in-process mode, uses its validation engine.
-- For the **differentiate** and **integrate** types: an **AI API key** (any OpenAI-compatible
-  provider, Anthropic, or Google Gemini) to draft expressions. The other six types generate entirely
-  from built-in templates and need no AI.
+- For the **differentiate** and **integrate** types: a way to draft expressions — an **AI API key** (any
+  OpenAI-compatible provider, Anthropic, or Google Gemini), or Moodle's **built-in core AI**, or the
+  **on-device** backend (a WebGPU browser, no key). The other six types generate entirely from built-in
+  templates and need no AI.
 - **Cron** must be running (standard Moodle requirement) so queued generation jobs execute.
 
 ## Install
@@ -67,12 +68,46 @@ php admin/cli/upgrade.php --non-interactive
 | Setting | Description |
 |---|---|
 | **Generation mode** | `Auto` (default), `In-process`, or `External`. |
-| **AI provider / model / key** | For in-process mode. The key is stored server-side and never sent to the browser. Leave the provider as *None* to use only the built-in template expressions (no AI calls). |
+| **AI backend** | Where the source expression is drafted: `Auto` (default), Moodle's built-in **core AI**, this plugin's **own provider**, or **On-device** (in the author's browser, no key). The oracle validates the result either way. |
+| **On-device model** | Which WebLLM model runs in the browser when the backend resolves to on-device. Defaults to a small coder/instruct model; every option is a real WebLLM prebuilt id. |
+| **Remember on-device failures** | Lets the browser remember, per type, the guidance from recent Maxima failures and add it to later prompts (stored only in the author's browser). |
+| **AI provider / model / key** | For the own-provider backend. The key is stored server-side and never sent to the browser. Leave the provider as *None* to use only the built-in template expressions (no AI calls). |
 | **Generation service URL / API token** | For external mode only. Empty by default. |
 
 There is also an **in-process smoke test** page (linked from the settings) that builds one known-good
 question, validates it across all deployed seeds against your Maxima, and deletes it — a one-click way
 to confirm in-process mode works on your site.
+
+### On-device (in-browser) generation
+
+Set the **AI backend** to *On-device* to draft the source expression for the differentiate and
+integrate types with a small model that runs **entirely in the author's browser** via WebLLM/WebGPU —
+no API key and no external AI provider. The browser proposes only an expression; **this Moodle server
+still runs the oracle** (imports to a scratch category, instantiates across every seed, rejects runtime
+CAS errors, and proves the exported question passes its own tests) before anything is added to the bank.
+The browser never sends XML, and because the template's own Maxima computes the answer server-side there
+is nothing to leak.
+
+Requirements and behaviour:
+
+- A browser with **WebGPU** (recent Chrome or Edge, or Safari 18+). The model downloads once (about
+  1 GB) and is then cached. Without WebGPU the on-device button shows a notice and the author can use the
+  server *Generate & add* button instead (which drafts on the server / from templates).
+- On-device helps only the two expr-driven types; the other six always generate from templates on the
+  server.
+- This is **opt-in and off by default**: it appears only when an administrator explicitly selects the
+  on-device backend, so existing sites are unchanged.
+
+### Max-squeeze pre/post pipeline
+
+Every backend (own, core, and on-device) shares a deterministic PRE/POST shell that lifts the rate at
+which a small model produces a valid expression: a tight minimal-JSON prompt with one worked example and
+difficulty guidance (`classes/local/prompt_rules.php`); deterministic pre-CAS repair of the raw output
+(strip LaTeX/markdown, normalise powers, balance parentheses, insert implicit multiplication) feeding the
+unchanged allow-list gate (`normalize::repair_expr`); a Maxima-reason → retry-hint catalog
+(`classes/local/error_hints.php`); and **generate-until-valid** — an AI miss is discarded and retried
+(up to a 2× cap) rather than immediately spending a template default, with the validated template default
+still guaranteeing the final count.
 
 > **Internal endpoints (external mode):** the service URL is admin-only and validated (http/https,
 > host required, no embedded credentials). Because deployments often run the service on an internal
@@ -135,7 +170,10 @@ Recommended practice:
 This plugin records each **generation job** a user requests (in `local_stackforge_jobs`: the user, the
 course, the chosen type/difficulty, the status and timestamps) and implements the full Moodle Privacy
 API to export and delete that data. In in-process mode it discloses the chosen **question type and
-difficulty** (never any user information) to the configured AI provider. See `classes/privacy/`.
+difficulty** (never any user information) to the configured AI provider. With the **on-device** backend
+nothing is sent to any external AI provider — the model runs in the author's browser and the only
+external request is a one-time model download from a public CDN (no personal data). See
+`classes/privacy/`.
 
 ## For reviewers
 

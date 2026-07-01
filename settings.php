@@ -63,10 +63,38 @@ if ($hassiteconfig) {
         get_string('aibackend_desc', 'local_stackforge'),
         'auto',
         [
-            'auto' => get_string('aibackend_auto', 'local_stackforge'),
-            'core' => get_string('aibackend_core', 'local_stackforge'),
-            'own'  => get_string('aibackend_own', 'local_stackforge'),
+            'auto'     => get_string('aibackend_auto', 'local_stackforge'),
+            'core'     => get_string('aibackend_core', 'local_stackforge'),
+            'own'      => get_string('aibackend_own', 'local_stackforge'),
+            'ondevice' => get_string('aibackend_ondevice', 'local_stackforge'),
         ]
+    ));
+
+    // On-device (in-browser WebLLM) model. Generation has no answer to leak (the server oracle validates
+    // every proposal), so unlike the hinter the model is configurable; the default is a small
+    // coder/instruct model good at emitting the minimal JSON contract. Only used when the backend
+    // resolves to on-device. Every option is a real WebLLM prebuilt model id.
+    $settings->add(new admin_setting_configselect(
+        'local_stackforge/ondevicemodel',
+        get_string('ondevicemodel', 'local_stackforge'),
+        get_string('ondevicemodel_desc', 'local_stackforge'),
+        'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
+        [
+            'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC' => 'Qwen2.5-Coder 1.5B Instruct (default)',
+            'Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC' => 'Qwen2.5-Coder 0.5B Instruct (smallest, fastest)',
+            'Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC'   => 'Qwen2.5-Coder 3B Instruct (larger, slower)',
+            'Llama-3.2-3B-Instruct-q4f16_1-MLC'       => 'Llama 3.2 3B Instruct',
+            'gemma-2-2b-it-q4f16_1-MLC'               => 'Gemma 2 2B Instruct (cache-shared with the hinter)',
+        ]
+    ));
+
+    // Let the browser remember, per question type, the guidance from recent Maxima failures so a later
+    // batch avoids the same mistakes (stored only in the author's browser localStorage).
+    $settings->add(new admin_setting_configcheckbox(
+        'local_stackforge/errormemory',
+        get_string('errormemory', 'local_stackforge'),
+        get_string('errormemory_desc', 'local_stackforge'),
+        1
     ));
 
     $providers = [

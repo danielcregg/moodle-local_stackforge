@@ -75,8 +75,28 @@ class generate_questions_task extends \core\task\adhoc_task {
                 $DB->update_record('local_stackforge_jobs', $job);
             }
 
-            for ($i = 0; $i < (int) $job->numrequested; $i++) {
-                $res = pipeline::generate_one($job->qtype, $job->difficulty, $i, $context, $course, $scratch, (int) $job->userid);
+            // Generate-until-valid: keep drafting until numrequested questions are validated, discarding
+            // an AI miss instead of spending a template default on every miss. A 2x attempt cap bounds the
+            // work, and the template default is enabled once the remaining budget equals the shortfall, so
+            // the final count is still guaranteed. The six non-expr types produce a template each attempt.
+            $numreq = (int) $job->numrequested;
+            $maxattempts = max($numreq, 2 * $numreq);
+            $attempt = 0;
+            while (count($qids) < $numreq && $attempt < $maxattempts) {
+                $remaining = $numreq - count($qids);
+                // Allow the template fallback only when we could otherwise run out of attempts.
+                $allowfallback = (($maxattempts - $attempt) <= $remaining);
+                $res = pipeline::generate_one(
+                    $job->qtype,
+                    $job->difficulty,
+                    $attempt,
+                    $context,
+                    $course,
+                    $scratch,
+                    (int) $job->userid,
+                    3,
+                    $allowfallback
+                );
                 if (!empty($res['ok']) && !empty($res['xml'])) {
                     $imported = generator::import_one($res['xml'], $category, $context, $course);
                     foreach ($imported as $qid) {
@@ -84,11 +104,12 @@ class generate_questions_task extends \core\task\adhoc_task {
                             $qids[] = (int) $qid;
                         }
                     }
-                    $log[] = '#' . ($i + 1) . ' ok (' . ($res['source'] ?? '') . ')';
+                    $log[] = '#' . count($qids) . ' ok (' . ($res['source'] ?? '') . ')';
                 } else {
-                    $log[] = '#' . ($i + 1) . ' failed: ' . ($res['reason'] ?? 'unknown');
+                    $log[] = 'attempt ' . ($attempt + 1) . ' discarded: ' . ($res['reason'] ?? 'unknown');
                 }
-                // Persist progress after each question so the course page can show it live.
+                $attempt++;
+                // Persist progress after each attempt so the course page can show it live.
                 $job->nummade = count($qids);
                 $job->errors = implode("\n", $log);
                 $job->timemodified = time();

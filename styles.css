@@ -11,3 +11,12 @@
 .local-stackforge-build {
     margin-top: 0.4rem;
 }
+
+.local-stackforge-ondevice {
+    margin-top: 0.4rem;
+}
+
+.local-stackforge-ondevice-status {
+    margin-top: 0.6rem;
+    font-style: italic;
+}

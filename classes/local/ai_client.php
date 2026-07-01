@@ -43,28 +43,17 @@ class ai_client {
         'gemini'   => ['kind' => 'gemini', 'endpoint' => 'https://generativelanguage.googleapis.com/v1beta/models/'],
     ];
 
-    /**
-     * Types whose template actually CONSUMES an AI-supplied expr. The other six are fully parameterised
-     * by their own random variables, so we never spend an AI call on them.
-     *
-     * @var array<string, string>
-     */
-    const EXPR_TYPES = [
-        'differentiate' => 'a polynomial in x to differentiate, using integer parameter a, e.g. (x-a)^3 or a*x^3 - x',
-        'integrate'     => 'a simple polynomial in x to integrate, using parameter a, e.g. a*x^2 + x',
-    ];
-
-    /** @var string The author system prompt. */
-    const SYSTEM = 'You are a mathematics question author. Output only valid JSON.';
+    /** @var string The provisional on-device (WebLLM) model when the ondevicemodel setting is unset. */
+    const DEFAULT_ONDEVICE_MODEL = 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC';
 
     /**
-     * Whether a type consumes an AI-supplied expression.
+     * Whether a type consumes an AI-supplied expression (only the two expr-driven types do).
      *
      * @param string $type The question type.
      * @return bool True if the type uses an expr.
      */
     public static function uses_expr(string $type): bool {
-        return isset(self::EXPR_TYPES[$type]);
+        return prompt_rules::supports($type);
     }
 
     /**
@@ -80,31 +69,91 @@ class ai_client {
     }
 
     /**
-     * Resolve which AI backend drafts the expression: 'core' (Moodle's AI subsystem) or 'own'.
+     * Whether this plugin's own provider is fully configured (an alias of configured(), mirroring the
+     * hinter's resolve chain).
      *
-     * @param \context|null $context The request context (core needs one; null forces 'own' in auto).
-     * @return string 'core' or 'own'.
+     * @return bool True if the own-provider path can run.
      */
-    public static function resolve_backend(?\context $context): string {
-        $backend = (string) get_config('local_stackforge', 'aibackend');
-        if ($backend === 'core') {
-            return 'core';
-        }
-        if ($backend === 'own') {
-            return 'own';
-        }
-        // Auto (default): prefer core only when it is actually available, else this plugin's provider.
-        return ($context !== null && core_ai::available()) ? 'core' : 'own';
+    public static function own_configured(): bool {
+        return self::configured();
     }
 
     /**
-     * Whether an AI drafting backend is usable (so the pipeline tries AI before the template default).
+     * The on-device (in-browser WebLLM) model id used when aibackend is 'ondevice'.
+     *
+     * Unlike the hinter (where answer-leak forces a fixed 0%-leak model), generation has no answer to
+     * leak: the model only proposes an expression and the SERVER oracle validates it. So the model is
+     * configurable, and the default is a small coder/instruct model good at structured JSON output.
+     *
+     * TODO: The generation-model default is provisional. Pick the winner with a Janus A100 eval
+     * (valid-JSON rate + oracle-pass rate, temperatures 0.3 to 0.5) per the design doc's Open Questions.
+     *
+     * @return string A WebLLM prebuilt model id.
+     */
+    public static function ondevice_model(): string {
+        $model = trim((string) get_config('local_stackforge', 'ondevicemodel'));
+        return $model !== '' ? $model : self::DEFAULT_ONDEVICE_MODEL;
+    }
+
+    /**
+     * Resolve which AI backend drafts the expression: 'core' (Moodle's AI subsystem), 'own' (this
+     * plugin's provider/key) or 'ondevice' (a model in the author's browser).
+     *
+     * In 'auto' the plugin needs no configuration: core AI when the site has it, else this plugin's own
+     * provider when a key is set, else the zero-config on-device model. Explicit choices are honoured.
+     *
+     * @param \context|null $context The request context (core needs one).
+     * @return string 'core', 'own' or 'ondevice'.
+     */
+    public static function resolve_backend(?\context $context): string {
+        $backend = (string) get_config('local_stackforge', 'aibackend');
+        if (in_array($backend, ['core', 'own', 'ondevice'], true)) {
+            return $backend;
+        }
+        // Auto (default): core when available, else this plugin's own provider, else on-device.
+        if ($context !== null && core_ai::available()) {
+            return 'core';
+        }
+        return self::own_configured() ? 'own' : 'ondevice';
+    }
+
+    /**
+     * Whether a SERVER-side AI drafting backend is usable (so the server pipeline tries AI before the
+     * template default). The on-device backend drafts in the browser, so it is never server-usable — the
+     * server job path falls back to the deterministic template default, and the browser drives on-device.
      *
      * @param \context|null $context The request context.
      * @return bool True if core AI is available, or this plugin's own provider is configured.
      */
     public static function ai_available(?\context $context): bool {
-        return self::resolve_backend($context) === 'core' ? core_ai::available() : self::configured();
+        $backend = self::resolve_backend($context);
+        if ($backend === 'core') {
+            return core_ai::available();
+        }
+        if ($backend === 'own') {
+            return self::configured();
+        }
+        return false;
+    }
+
+    /**
+     * The compact system + user messages for a proposal, for the on-device browser backend to run
+     * locally. Delegates to prompt_rules so PRE is identical to the server path. There is no answer in
+     * the payload: the model only proposes an expression and the server oracle validates it.
+     *
+     * @param string $type The question type.
+     * @param string $difficulty The requested difficulty.
+     * @param string[] $avoid Recent retry hints for this type (an AVOID block).
+     * @param string[] $used Expressions already accepted this batch (anti-duplication).
+     * @return array The messages keyed 'system' and 'user' ('' / '' for a non-expr type).
+     */
+    public static function build_seed_messages(
+        string $type,
+        string $difficulty,
+        array $avoid = [],
+        array $used = []
+    ): array {
+        return prompt_rules::messages($type, $difficulty, $avoid, $used, prompt_rules::TIER_COMPACT);
     }
 
     /**
@@ -119,16 +168,32 @@ class ai_client {
      * @param string $difficulty The requested difficulty.
      * @param \context|null $context The request context (for the core AI backend).
      * @param int $userid The requesting user id (for the core AI policy check; defaults to current user).
+     * @param string[] $avoid Recent retry hints for this type (fed into the prompt's AVOID block).
      * @return string|null A grammar-safe expression, or null if unavailable/unusable.
      */
-    public static function propose_expr(string $type, string $difficulty, ?\context $context = null, int $userid = 0): ?string {
-        if (!isset(self::EXPR_TYPES[$type])) {
+    public static function propose_expr(
+        string $type,
+        string $difficulty,
+        ?\context $context = null,
+        int $userid = 0,
+        array $avoid = []
+    ): ?string {
+        if (!prompt_rules::supports($type)) {
             return null;
         }
-        $prompt = self::build_prompt($type, $difficulty);
+        $backend = self::resolve_backend($context);
+        // On-device drafting happens in the author's browser, never here on the server.
+        if ($backend === 'ondevice') {
+            return null;
+        }
+        // The server path uses the verbose tier (capable cloud models); the AVOID block carries any
+        // targeted guidance from a previous failed attempt for this type.
+        $messages = prompt_rules::messages($type, $difficulty, $avoid, [], prompt_rules::TIER_VERBOSE);
+        $system = $messages['system'];
+        $prompt = $messages['user'];
         $text = null;
 
-        if (self::resolve_backend($context) === 'core') {
+        if ($backend === 'core') {
             if ($userid <= 0) {
                 $userid = (int) ($GLOBALS['USER']->id ?? 0);
             }
@@ -136,7 +201,7 @@ class ai_client {
             if (!core_ai::available() || !core_ai::policy_accepted($userid)) {
                 return null;
             }
-            $text = core_ai::generate_text($context, $userid, self::SYSTEM . "\n\n" . $prompt);
+            $text = core_ai::generate_text($context, $userid, $system . "\n\n" . $prompt);
         } else {
             if (!self::configured()) {
                 return null;
@@ -148,13 +213,13 @@ class ai_client {
             try {
                 switch ($p['kind']) {
                     case 'openai':
-                        $text = self::call_openai($p['endpoint'], $key, $model, self::SYSTEM, $prompt);
+                        $text = self::call_openai($p['endpoint'], $key, $model, $system, $prompt);
                         break;
                     case 'gemini':
-                        $text = self::call_gemini($p['endpoint'], $key, $model, self::SYSTEM, $prompt);
+                        $text = self::call_gemini($p['endpoint'], $key, $model, $system, $prompt);
                         break;
                     case 'anthropic':
-                        $text = self::call_anthropic($p['endpoint'], $key, $model, self::SYSTEM, $prompt);
+                        $text = self::call_anthropic($p['endpoint'], $key, $model, $system, $prompt);
                         break;
                     default:
                         return null;
@@ -168,49 +233,16 @@ class ai_client {
         if ($text === null || trim($text) === '') {
             return null;
         }
-        $json = self::extract_json($text);
+        $json = normalize::extract_json($text);
         if (!is_array($json) || !isset($json['expr']) || !is_string($json['expr']) || trim($json['expr']) === '') {
             return null;
         }
-        $expr = normalize::tidy_expr($json['expr']);
+        // Deterministic pre-CAS repair, then the unchanged allow-list gate decides admissibility.
+        [$expr] = normalize::repair_expr($json['expr']);
         if (!normalize::looks_safe_expr($expr)) {
             return null;
         }
         return $expr;
-    }
-
-    /**
-     * Build the expression-proposal user prompt (mirrors docs/js/ai.js buildSlotPrompt).
-     *
-     * @param string $type The question type.
-     * @param string $difficulty The requested difficulty.
-     * @return string The prompt.
-     */
-    private static function build_prompt(string $type, string $difficulty): string {
-        $desc = self::EXPR_TYPES[$type];
-        $typename = str_replace('_', ' ', $type);
-        return "Produce ONE JSON object of the form {\"expr\": \"<Maxima expression>\"} for a {$difficulty} "
-            . "\"{$typename}\" question. The expression must be {$desc}. "
-            . 'Use only the variable x and integer parameters a (and b if needed) — do NOT introduce any '
-            . 'other variables. Use Maxima syntax: ^ for powers, * for multiplication, and functions like '
-            . 'expand(...). Output ONLY the JSON object, nothing else.';
-    }
-
-    /**
-     * Extract the first JSON object from a model response (strips markdown fences/prose).
-     *
-     * @param string $text The model output.
-     * @return array|null The decoded object, or null.
-     */
-    private static function extract_json(string $text): ?array {
-        $s = trim($text);
-        $i = strpos($s, '{');
-        $j = strrpos($s, '}');
-        if ($i !== false && $j !== false && $j > $i) {
-            $s = substr($s, $i, $j - $i + 1);
-        }
-        $data = json_decode($s, true);
-        return is_array($data) ? $data : null;
     }
 
     /**
@@ -237,7 +269,7 @@ class ai_client {
         $resp = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err = curl_error($ch);
-        curl_close($ch);
+        // No curl_close(): it is deprecated in PHP 8+ (a no-op) — the handle is freed when $ch goes out of scope.
         if ($resp === false) {
             throw new \moodle_exception('aifailed', 'local_stackforge', '', $err);
         }

@@ -278,6 +278,75 @@ echo html_writer::tag(
 
 echo html_writer::end_tag('form');
 
+// On-device (in-browser) drafting: shown only when an administrator has explicitly selected the
+// on-device AI backend and in-process mode is in effect, so existing sites are unchanged by default. The
+// author's browser drafts the source expression for the two expr-driven types; the server oracle still
+// validates and imports every candidate (the browser never supplies XML). The six non-expr types stay on
+// the server template path above.
+$aibackend = (string) get_config('local_stackforge', 'aibackend');
+if (
+    $aibackend === 'ondevice'
+    && $mode === pipeline::MODE_INPROCESS
+    && has_capability('moodle/question:add', $context)
+) {
+    [$odsupported, $odwhy] = \local_stackforge\local\inprocess_validator::inprocess_supported();
+    echo html_writer::empty_tag('hr', ['class' => 'local-stackforge-sep']);
+    echo html_writer::tag('h4', get_string('ondeviceheading', 'local_stackforge'));
+    echo html_writer::tag('p', get_string('ondeviceintro', 'local_stackforge'));
+    if (!$odsupported) {
+        echo $OUTPUT->notification(get_string('smokeunsupported', 'local_stackforge', $odwhy), 'error');
+    } else {
+        echo html_writer::tag(
+            'button',
+            get_string('ondevicebtn', 'local_stackforge'),
+            [
+                'type' => 'button',
+                'id' => 'local-stackforge-ondevice-btn',
+                'class' => 'btn btn-secondary local-stackforge-ondevice',
+            ]
+        );
+        echo html_writer::tag('div', '', [
+            'id' => 'local-stackforge-ondevice-status',
+            'class' => 'local-stackforge-ondevice-status',
+        ]);
+
+        // The server-authored compact prompt for every expr type and difficulty; the browser appends its
+        // own AVOID and anti-duplication blocks. This is the single source of the proposal prompt.
+        $promptrules = [];
+        foreach (['differentiate', 'integrate'] as $exprtype) {
+            foreach (['easy', 'medium', 'hard'] as $diff) {
+                $promptrules[$exprtype . '|' . $diff] =
+                    \local_stackforge\local\ai_client::build_seed_messages($exprtype, $diff, [], []);
+            }
+        }
+
+        $config = [
+            'ajaxurl' => (new moodle_url('/local/stackforge/ajax.php'))->out(false),
+            'sesskey' => sesskey(),
+            'courseid' => $courseid,
+            'categoryid' => (int) array_key_first($catoptions),
+            'ondevicemodel' => \local_stackforge\local\ai_client::ondevice_model(),
+            // Public CDN for the on-device (WebLLM) runtime, loaded by native dynamic import in the browser.
+            'webllmurl' => 'https://esm.run/@mlc-ai/web-llm',
+            'errormemory' => (bool) get_config('local_stackforge', 'errormemory'),
+            'promptrules' => $promptrules,
+            'bankurl' => (new moodle_url('/question/edit.php', ['courseid' => $courseid]))->out(false),
+            'strings' => [
+                'loading' => get_string('ondeviceloading', 'local_stackforge'),
+                'download' => get_string('ondevicedownload', 'local_stackforge'),
+                'nowebgpu' => get_string('ondevicenowebgpu', 'local_stackforge'),
+                'generating' => get_string('ondevicegenerating', 'local_stackforge'),
+                'validating' => get_string('ondevicevalidating', 'local_stackforge'),
+                'done' => get_string('ondevicedone', 'local_stackforge'),
+                'unavailable' => get_string('ondeviceunavailable', 'local_stackforge'),
+                'notexprtype' => get_string('ondevicenotexprtype', 'local_stackforge'),
+                'backtobank' => get_string('backtobank', 'local_stackforge'),
+            ],
+        ];
+        $PAGE->requires->js_call_amd('local_stackforge/generator', 'init', [$config]);
+    }
+}
+
 // Build a full RL-sequenced quiz — external service only (Phase 3 policy lives in the backend).
 if ($hasservice) {
     echo html_writer::empty_tag('hr', ['class' => 'local-stackforge-sep']);

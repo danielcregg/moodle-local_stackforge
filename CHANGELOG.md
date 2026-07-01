@@ -4,6 +4,39 @@ All notable changes to **local_stackforge** are documented in this file. The for
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0-beta] — 2026-07-01
+
+Adds an optional **on-device (in-browser) AI backend** and a shared **max-squeeze pre/post pipeline**.
+Additive and inert by default: existing sites are unchanged unless the new backend is selected.
+
+### Added
+- **On-device AI backend** (`AI backend` setting: adds `On-device`). The author's browser drafts the
+  source expression for the differentiate and integrate types with a small **WebLLM/WebGPU** model — no
+  API key and no external AI provider. The browser posts only `{type, difficulty, expr}` to the plugin's
+  own endpoint; the **server still runs the oracle** (scratch import → per-seed instantiation → runtime
+  CAS-error rejection → `test_question()`) and imports only what passes. The browser never sends XML, and
+  because the template's Maxima computes the answer server-side there is nothing to leak.
+- New **On-device model** setting (a curated set of real WebLLM prebuilt ids; default a small
+  coder/instruct model) and a **Remember on-device failures** toggle (per-type browser-side self-improvement).
+- A shared, backend-agnostic **pre/post pipeline** that lifts every backend's valid-expression rate:
+  a compact/verbose minimal-JSON prompt builder with a worked few-shot example and difficulty guidance
+  (`classes/local/prompt_rules.php`); deterministic pre-CAS expression repair feeding the unchanged
+  allow-list gate (`normalize::repair_expr`, plus a hardened `normalize::extract_json`); a Maxima-reason
+  → retry-hint catalog (`classes/local/error_hints.php`); and **generate-until-valid** batch generation
+  (discard an AI miss and retry up to a 2× cap, with the validated template default still guaranteeing
+  the final count).
+
+### Changed
+- The server AI drafting path now routes through the shared prompt builder and threads each Maxima
+  failure into the next attempt's guidance.
+- Privacy: the on-device backend sends nothing to any external AI provider; a one-time model download
+  from a public CDN (no personal data) is disclosed.
+
+### Security
+- The on-device endpoint (`ajax.php`) is capability- and sesskey-gated (`local/stackforge:generate` +
+  `moodle/question:add`), imports only into a category that belongs to the course context, and **never**
+  accepts XML from the browser — the server builds the XML and runs the oracle on every candidate.
+
 ## [1.1.0-beta] — 2026-06-24
 
 Adds a **zero-backend, in-process** generation mode, live-tested on Moodle 4.5.12.

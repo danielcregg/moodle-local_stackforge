@@ -72,6 +72,8 @@ class pipeline {
      * @param \stdClass|null $scratchcat The scratch category (required for in-process; null for external).
      * @param int $userid The requesting user id (for the core AI policy check).
      * @param int $attempts Maximum AI attempts before the template fallback.
+     * @param bool $allowfallback Whether an AI miss may fall back to the validated template default now
+     *      (false lets a generate-until-valid caller discard the miss and retry with a fresh candidate).
      * @return array ok|xml|reason|source plus name|type|difficulty on success.
      */
     public static function generate_one(
@@ -82,12 +84,23 @@ class pipeline {
         \stdClass $course,
         ?\stdClass $scratchcat,
         int $userid = 0,
-        int $attempts = 3
+        int $attempts = 3,
+        bool $allowfallback = true
     ): array {
         if (self::resolve_mode() === self::MODE_EXTERNAL) {
             return self::generate_external($type, $difficulty);
         }
-        return self::generate_inprocess($type, $difficulty, $index, $context, $course, $scratchcat, $userid, $attempts);
+        return self::generate_inprocess(
+            $type,
+            $difficulty,
+            $index,
+            $context,
+            $course,
+            $scratchcat,
+            $userid,
+            $attempts,
+            $allowfallback
+        );
     }
 
     /**
@@ -129,6 +142,7 @@ class pipeline {
      * @param \stdClass|null $scratchcat The scratch category.
      * @param int $userid The requesting user id (for the core AI policy check).
      * @param int $attempts Maximum AI attempts.
+     * @param bool $allowfallback Whether an AI miss may fall back to the validated template default now.
      * @return array The result.
      */
     public static function generate_inprocess(
@@ -139,7 +153,8 @@ class pipeline {
         \stdClass $course,
         ?\stdClass $scratchcat,
         int $userid = 0,
-        int $attempts = 3
+        int $attempts = 3,
+        bool $allowfallback = true
     ): array {
         if (!template_registry::exists($type)) {
             return ['ok' => false, 'xml' => null, 'reason' => 'unknown type: ' . $type, 'source' => 'inprocess'];
@@ -154,19 +169,28 @@ class pipeline {
 
         $lastreason = 'validation failed';
 
-        // AI-proposed expressions first (only for expr-driven types, when an AI backend is usable).
+        // AI-proposed expressions first (only for expr-driven types, when a server AI backend is usable).
+        // A failed attempt's Maxima reason is turned into a targeted retry hint and threaded into the next
+        // attempt's AVOID block, so a small model steers away from the same mistake (generate-until-valid).
         if (ai_client::uses_expr($type) && ai_client::ai_available($context)) {
+            $avoid = [];
             for ($i = 0; $i < $attempts; $i++) {
-                $expr = ai_client::propose_expr($type, $difficulty, $context, $userid);
+                $expr = ai_client::propose_expr($type, $difficulty, $context, $userid, $avoid);
                 if ($expr === null) {
                     continue;
                 }
-                $q = template_registry::make($type, ['expr' => $expr, 'difficulty' => $difficulty]);
-                $res = inprocess_validator::validate($q, $context, $course, $scratchcat);
+                $res = self::validate_candidate($type, $difficulty, $expr, $context, $course, $scratchcat);
                 if ($res['ok']) {
                     return array_merge($res, ['source' => 'ai', 'attempt' => $i + 1, 'expr' => $expr]);
                 }
                 $lastreason = $res['reason'];
+                $avoid[] = error_hints::hint_for($res['reason'], $type);
+            }
+
+            // Generate-until-valid: when the caller still has budget to try another AI candidate, discard
+            // this miss rather than spend a template default now (the caller retries with a fresh expr).
+            if (!$allowfallback) {
+                return ['ok' => false, 'xml' => null, 'reason' => $lastreason, 'source' => 'ai'];
             }
         }
 
@@ -186,6 +210,50 @@ class pipeline {
         }
         $reason = ($res['reason'] !== '') ? $res['reason'] : $lastreason;
         return ['ok' => false, 'xml' => null, 'reason' => $reason, 'source' => $source];
+    }
+
+    /**
+     * Validate ONE proposed expression through the oracle and return the notes-baked XML on success.
+     *
+     * This is the single server-side entry point for a browser-proposed (on-device) expression and is
+     * reused by the server AI loop. The browser never supplies XML: it supplies only {type, difficulty,
+     * expr}; the server repairs and gates the expression, builds the XML from the deterministic template,
+     * and runs the in-process oracle. A failure carries a short retry hint from the error catalog.
+     *
+     * @param string $type The expr-driven question type.
+     * @param string $difficulty The requested difficulty.
+     * @param string $expr The proposed source expression (repaired and gated here, never trusted).
+     * @param \context $context The course context.
+     * @param \stdClass $course The course.
+     * @param \stdClass $scratchcat The scratch category the draft and final copies live in briefly.
+     * @return array ok|xml|reason|hint|expr plus name|type|difficulty|seeds|tests on success.
+     */
+    public static function validate_candidate(
+        string $type,
+        string $difficulty,
+        string $expr,
+        \context $context,
+        \stdClass $course,
+        \stdClass $scratchcat
+    ): array {
+        if (!template_registry::exists($type) || !ai_client::uses_expr($type)) {
+            $reason = 'type does not accept a proposed expression: ' . $type;
+            return ['ok' => false, 'xml' => null, 'reason' => $reason, 'expr' => '', 'hint' => ''];
+        }
+        // Deterministic pre-CAS repair, then the unchanged allow-list gate is the safety boundary.
+        [$repaired] = normalize::repair_expr($expr);
+        if (!normalize::looks_safe_expr($repaired)) {
+            $reason = 'unsafe or unparseable expression';
+            return [
+                'ok' => false, 'xml' => null, 'reason' => $reason,
+                'expr' => $repaired, 'hint' => error_hints::hint_for($reason, $type),
+            ];
+        }
+        $q = template_registry::make($type, ['expr' => $repaired, 'difficulty' => $difficulty]);
+        $res = inprocess_validator::validate($q, $context, $course, $scratchcat);
+        $res['expr'] = $repaired;
+        $res['hint'] = !empty($res['ok']) ? '' : error_hints::hint_for($res['reason'] ?? '', $type);
+        return $res;
     }
 
     /**

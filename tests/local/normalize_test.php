@@ -68,4 +68,27 @@ final class normalize_test extends \advanced_testcase {
             $this->assertFalse(normalize::looks_safe_expr($expr), "expected blocked: $expr");
         }
     }
+
+    /**
+     * extract_json recovers the first balanced object, ignoring think blocks, code fences and prose,
+     * and tolerates a trailing comma.
+     *
+     * @return void
+     */
+    public function test_extract_json(): void {
+        $fence = str_repeat(chr(96), 3);
+        $this->assertSame(['expr' => 'a*x^2'], normalize::extract_json('{"expr": "a*x^2"}'));
+        $this->assertSame(
+            ['expr' => 'a*x^2'],
+            normalize::extract_json($fence . "json\n{\"expr\": \"a*x^2\"}\n" . $fence)
+        );
+        $this->assertSame(
+            ['expr' => 'x^3'],
+            normalize::extract_json('<think>maybe {ignore}</think> Here it is: {"expr": "x^3"}')
+        );
+        // A trailing comma before the closing brace is tolerated.
+        $this->assertSame(['expr' => 'x'], normalize::extract_json('prose {"expr": "x",}'));
+        $this->assertNull(normalize::extract_json('no json here'));
+        $this->assertNull(normalize::extract_json(''));
+    }
 }

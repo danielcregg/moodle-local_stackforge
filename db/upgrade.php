@@ -75,5 +75,19 @@ function xmldb_local_stackforge_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026062800, 'local', 'stackforge');
     }
 
+    if ($oldversion < 2026070105) {
+        // Add the optional on-device (in-browser WebLLM) generation backend and the shared pre/post
+        // pipeline. This is additive and inert by default: existing explicit aibackend values are left
+        // untouched, so no site is silently switched to on-device. Only seed the new on-device model
+        // default if it is unset, so the browser knows which model to run when on-device is selected.
+        if (get_config('local_stackforge', 'ondevicemodel') === false) {
+            set_config('ondevicemodel', 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC', 'local_stackforge');
+        }
+        if (get_config('local_stackforge', 'errormemory') === false) {
+            set_config('errormemory', 1, 'local_stackforge');
+        }
+        upgrade_plugin_savepoint(true, 2026070105, 'local', 'stackforge');
+    }
+
     return true;
 }

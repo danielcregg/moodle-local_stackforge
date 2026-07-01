@@ -30,11 +30,11 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component    = 'local_stackforge';
-$plugin->version      = 2026062800;
+$plugin->version      = 2026070105;
 $plugin->requires     = 2024100700;             // Moodle 4.5 (LTS).
 $plugin->supported    = [405, 405];             // Developed and tested on Moodle 4.5 LTS.
 $plugin->maturity     = MATURITY_BETA;
-$plugin->release      = '1.1.0-beta';
+$plugin->release      = '1.2.0-beta';
 $plugin->dependencies = [
     'qtype_stack' => ANY_VERSION, // Generates and imports STACK questions only.
 ];

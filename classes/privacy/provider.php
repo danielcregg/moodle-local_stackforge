@@ -33,8 +33,10 @@ use core_privacy\local\request\writer;
 
 /**
  * The plugin stores a record of each generation job a user requests (in local_stackforge_jobs). It
- * also discloses, to the configured AI provider, the chosen question type and difficulty when drafting
- * — neither of which is information about a user.
+ * also discloses, to the configured AI provider, the chosen question type and difficulty when drafting,
+ * neither of which is information about a user. When the on-device backend is used the model runs in the
+ * author's browser and nothing is sent to any external AI provider (a smaller external footprint than the
+ * server backends); the only external browser request is a one-time model download from a public CDN.
  */
 class provider implements
     \core_privacy\local\metadata\provider,
@@ -60,6 +62,9 @@ class provider implements
             'qtype' => 'privacy:metadata:aiservice:qtype',
             'difficulty' => 'privacy:metadata:aiservice:difficulty',
         ], 'privacy:metadata:aiservice');
+
+        // The on-device backend downloads the model from a public CDN in the browser; no personal data.
+        $collection->add_external_location_link('ondevicecdn', [], 'privacy:metadata:ondevicecdn');
 
         return $collection;
     }
