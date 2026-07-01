@@ -326,10 +326,23 @@ const runBatch = (config, panel) => {
             .catch(() => step(engine));
     };
 
-    return getEngine(config, config.ondevicemodel, onProgress)
+    return navigator.gpu.requestAdapter()
+        .then((adapter) => {
+            // A software fallback adapter (SwiftShader) reports WebGPU as present but runs the model
+            // unusably slowly and can garble generation, so treat it as no WebGPU rather than attempt
+            // it. The fallback flag lives on adapter.info in current WebGPU and on the adapter itself
+            // in older builds - and Chromium can report it false for SwiftShader - so check all three.
+            const info = adapter && adapter.info;
+            if (!adapter || adapter.isFallbackAdapter || (info && info.isFallbackAdapter)
+                    || (info && String(info.architecture).toLowerCase() === 'swiftshader')) {
+                throw new Error('stackforge:nousableadapter');
+            }
+            return getEngine(config, config.ondevicemodel, onProgress);
+        })
         .then((engine) => step(engine))
-        .catch(() => {
-            setStatus(panel, strings.unavailable || '');
+        .catch((err) => {
+            setStatus(panel, ((err && err.message === 'stackforge:nousableadapter')
+                ? strings.nowebgpu : strings.unavailable) || '');
         });
 };
 

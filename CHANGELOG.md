@@ -4,6 +4,15 @@ All notable changes to **local_stackforge** are documented in this file. The for
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **On-device drafting now refuses software-emulated WebGPU instead of hanging.** Some browsers expose
+  WebGPU through a software fallback adapter (SwiftShader) with no real GPU behind it; there the on-device
+  model loads but generates unusably slowly and can produce garbled output. The generator now checks the
+  adapter before loading the model and treats a fallback/software adapter the same as no WebGPU, so those
+  authors get the clear "needs a WebGPU browser" message instead of an unusable draft loop.
+
 ## [1.2.0-beta] — 2026-07-01
 
 Adds an optional **on-device (in-browser) AI backend** and a shared **max-squeeze pre/post pipeline**.
